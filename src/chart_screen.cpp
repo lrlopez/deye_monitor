@@ -43,6 +43,7 @@ static lv_obj_t           *s_chart_pwr, *s_chart_soc;
 static lv_chart_series_t  *s_spv, *s_sgrid, *s_sbatt, *s_sload, *s_ssoc;
 static lv_obj_t           *s_popup, *s_popup_lbl;
 static lv_obj_t           *s_no_data;
+static lv_obj_t           *s_ylabels_container = nullptr;
 
 // ── Helpers de tiempo ─────────────────────────────────────────────────────
 static uint32_t day_epoch_from_offset(int offset) {
@@ -78,6 +79,38 @@ static void update_date_label() {
     else                lv_obj_remove_state(s_btn_prev, LV_STATE_DISABLED);
 }
 
+// ── Etiquetas eje Y izquierda ─────────────────────────────────────────────
+// Dibuja N etiquetas equidistantes en el margen izquierdo del chart.
+// y_lo / y_hi en las mismas unidades que lv_chart_set_range.
+// unit: cadena añadida al valor (ej. "k" para kWh, "%" para SOC)
+static void add_y_labels(lv_obj_t* parent, int chart_y, int chart_h,
+                          int y_lo, int y_hi, int steps, const char* unit) {
+    for (int i = 0; i <= steps; i++) {
+        // valor en unidades del chart
+        int val = y_lo + (y_hi - y_lo) * i / steps;
+
+        // posición Y en pantalla: top = y_hi, bottom = y_lo
+        int py = chart_y + CH_PAD_TV
+               + (int)((float)(steps - i) / steps * (chart_h - 2 * CH_PAD_TV))
+               - 6;   // -6 para centrar el label de 12px
+
+        char buf[12];
+        // Para potencias (unidad "k"): mostrar como entero de kW
+        if (strcmp(unit, "k") == 0)
+            snprintf(buf, sizeof(buf), "%dk", val / 1000);
+        else
+            snprintf(buf, sizeof(buf), "%d%s", val, unit);
+
+        lv_obj_t* lbl = lv_label_create(parent);
+        lv_obj_set_pos(lbl, 0, py);
+        lv_obj_set_width(lbl, CH_PAD_L - 2);
+        lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_RIGHT, 0);
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_color(lbl, C_MUTED, 0);
+        lv_label_set_text(lbl, buf);
+    }
+}
+
 // ── Rango del chart de potencias ──────────────────────────────────────────
 static void apply_range() {
     ChartConfig cfg = Storage.loadChartConfig();
@@ -99,6 +132,11 @@ static void apply_range() {
         int32_t margin = (mx - mn) / 8;
         if (margin < 200) margin = 200;
         lv_chart_set_range(s_chart_pwr, LV_CHART_AXIS_PRIMARY_Y, mn - margin, mx + margin);
+        lv_chart_set_range(s_chart_pwr, LV_CHART_AXIS_PRIMARY_Y, mn, mx);
+
+        // Regenerar etiquetas Y con el nuevo rango
+        lv_obj_clean(s_ylabels_container);
+        add_y_labels(s_ylabels_container, 0, PWR_H, (int)mn, (int)mx, 4, "k");
     } else {
         int32_t m = (int32_t)cfg.max_kw * 1000;
         lv_chart_set_range(s_chart_pwr, LV_CHART_AXIS_PRIMARY_Y, -m, m);
@@ -229,6 +267,7 @@ static lv_obj_t* legend_dot(lv_obj_t* p, int x, int y, lv_color_t c, const char*
     return lbl;
 }
 
+// ── make_chart() — eliminar la línea del axis_tick ────────────────────────
 static lv_obj_t* make_chart(lv_obj_t* parent, int y, int h, int y_lo, int y_hi, int hdiv) {
     lv_obj_t* c = lv_chart_create(parent);
     lv_obj_set_pos(c, 0, y); lv_obj_set_size(c, 480, h);
@@ -246,12 +285,14 @@ static lv_obj_t* make_chart(lv_obj_t* parent, int y, int h, int y_lo, int y_hi, 
     lv_obj_set_style_pad_right(c,  CH_PAD_R, 0);
     lv_obj_set_style_pad_top(c,    CH_PAD_TV, 0);
     lv_obj_set_style_pad_bottom(c, CH_PAD_TV, 0);
-
-    // Series: líneas de 2px, sin puntos
     lv_obj_set_style_line_width(c, 2, LV_PART_ITEMS);
     lv_obj_set_style_width(c,  0, LV_PART_INDICATOR);
     lv_obj_set_style_height(c, 0, LV_PART_INDICATOR);
     lv_obj_remove_flag(c, LV_OBJ_FLAG_SCROLLABLE);
+
+    // ── Línea de cero destacada ───────────────────────────────────────────
+    // Se dibuja como un objeto separado sobre el chart
+    // (solo relevante para el chart de potencias; el de SOC no tiene negativos)
     return c;
 }
 
@@ -272,7 +313,15 @@ void chart_screen_init(lv_obj_t* parent) {
     lv_label_set_text(s_lbl_date, "---");
 
     // ── Chart de potencias ────────────────────────────────────────────────
+    s_ylabels_container = lv_obj_create(parent);
+    lv_obj_set_pos(s_ylabels_container, 0, PWR_Y);
+    lv_obj_set_size(s_ylabels_container, CH_PAD_L, PWR_H);
+    lv_obj_set_style_bg_opa(s_ylabels_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(s_ylabels_container, 0, 0);
+    lv_obj_set_scrollbar_mode(s_ylabels_container, LV_SCROLLBAR_MODE_OFF);
+
     s_chart_pwr = make_chart(parent, PWR_Y, PWR_H, -6000, 6000, 5);
+    add_y_labels(parent, PWR_Y, PWR_H, -6000, 6000, 4, "k");
 
     // Series (la última en añadirse dibuja encima)
     s_sload = lv_chart_add_series(s_chart_pwr, C_LOAD, LV_CHART_AXIS_PRIMARY_Y);
@@ -297,6 +346,7 @@ void chart_screen_init(lv_obj_t* parent) {
 
     // ── Chart de SOC ──────────────────────────────────────────────────────
     s_chart_soc = make_chart(parent, SOC_Y, SOC_H, 0, 100, 2);
+    add_y_labels(parent, SOC_Y, SOC_H, 0, 100, 2, "%");
     s_ssoc = lv_chart_add_series(s_chart_soc, C_SOC, LV_CHART_AXIS_PRIMARY_Y);
 
     // ── Etiquetas eje X ───────────────────────────────────────────────────
