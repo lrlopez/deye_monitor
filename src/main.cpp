@@ -4,6 +4,7 @@
 #include "config.h"
 #include "solarman.h"
 #include "dashboard.h"
+#include "stats_screen.h"
 
 /* Change to your screen resolution */
 static uint32_t screenWidth = 480;
@@ -80,19 +81,21 @@ uint32_t esp_tick_get_cb() {
     return esp_timer_get_time() / 1000;
 }
 
-// ── Datos compartidos entre tareas ────────────────────────────────────────
-static EnergyData       g_data;
+static EnergyData        g_energy;
+static DailyStats        g_daily;
 static SemaphoreHandle_t g_mutex;
-static bool              g_dataReady = false;
+static volatile bool     g_energy_ready = false;
+static volatile bool     g_daily_ready  = false;
 
 // ── Tarea de red (Core 0) ─────────────────────────────────────────────────
-// Aislada del loop LVGL para no bloquear la pantalla durante el TCP
 static void solarmanTask(void* /*pv*/) {
     SolarmanClient client(LOGGER_IP, LOGGER_PORT, LOGGER_SERIAL, MODBUS_UNIT_ID);
-    EnergyData local;
+    EnergyData  local_e;
+    DailyStats  local_d;
+    uint32_t    last_daily = millis() - POLL_DAILY_MS + POLL_INTERVAL_MS;
 
     for (;;) {
-        // Reconexión WiFi si es necesario
+        // Reconexión WiFi
         if (WiFi.status() != WL_CONNECTED) {
             Serial0.println("[WiFi] Reconectando...");
             WiFi.begin(WIFI_SSID, WIFI_PASS);
@@ -102,17 +105,29 @@ static void solarmanTask(void* /*pv*/) {
         }
 
         if (WiFi.status() == WL_CONNECTED) {
-            if (client.fetchEnergyData(local)) {
-                Serial0.printf("[Data] PV:%dW  Grid:%dW  Batt:%dW(%d%%)  Load:%dW\n",
-                    (int)local.pv_power, (int)local.grid_power,
-                    (int)local.batt_power, (int)local.batt_soc,
-                    (int)local.load_power);
-
+            // Datos en tiempo real (cada POLL_INTERVAL_MS)
+            if (client.fetchEnergyData(local_e)) {
+                Serial0.printf("[Live] PV:%dW Grid:%dW Bat:%dW(%d%%) Load:%dW\n",
+                    (int)local_e.pv_power, (int)local_e.grid_power,
+                    (int)local_e.batt_power, (int)local_e.batt_soc,
+                    (int)local_e.load_power);
                 if (xSemaphoreTake(g_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                    g_data      = local;
-                    g_dataReady = true;
+                    g_energy       = local_e;
+                    g_energy_ready = true;
                     xSemaphoreGive(g_mutex);
                 }
+            }
+
+            // Estadísticas diarias (cada POLL_DAILY_MS)
+            if (millis() - last_daily >= POLL_DAILY_MS) {
+                if (client.fetchDailyStats(local_d)) {
+                    if (xSemaphoreTake(g_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                        g_daily       = local_d;
+                        g_daily_ready = true;
+                        xSemaphoreGive(g_mutex);
+                    }
+                }
+                last_daily = millis();
             }
         }
 
@@ -123,13 +138,9 @@ static void solarmanTask(void* /*pv*/) {
 // ── Setup ─────────────────────────────────────────────────────────────────
 void setup() {
     Serial0.begin(115200);
-    Serial0.println("Inicializando");
-
-    // ── Tu código de display aquí (ya configurado) ────────────────────────
-    // lv_init();
-    // setup_display();   // driver de tu pantalla
-    // lv_tick_set_cb([]() -> uint32_t { return millis(); });
-touch_init();
+    
+    // ── Tu código de display/touch aquí (ya configurado) ─────────────────
+    touch_init();
 
     // Init Display
     gfx->begin();
@@ -146,54 +157,63 @@ touch_init();
     if (!disp_draw_buf)
     {
         Serial0.println("LVGL disp_draw_buf allocate failed!");
+        while (true)
+            delay(1);
     }
-    else
-    {
-        /* Initialize the display */
-        disp_drv = lv_display_create(screenWidth, screenHeight);
-        lv_display_set_flush_cb(disp_drv, my_disp_flush);
-        /* Change the following line to your display resolution */
-        lv_display_set_buffers(disp_drv, disp_draw_buf, NULL, 2 * screenWidth * screenHeight / 4, LV_DISPLAY_RENDER_MODE_PARTIAL);
 
-        /* Initialize the (dummy) input device driver */
-        lv_indev_t * indev = lv_indev_create();
-        lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
-        lv_indev_set_read_cb(indev, my_touchpad_read);
-        lv_tick_set_cb(esp_tick_get_cb);
-        // ─────────────────────────────────────────────────────────────────────
+    /* Initialize the display */
+    disp_drv = lv_display_create(screenWidth, screenHeight);
+    lv_display_set_flush_cb(disp_drv, my_disp_flush);
+    /* Change the following line to your display resolution */
+    lv_display_set_buffers(disp_drv, disp_draw_buf, NULL, 2 * screenWidth * screenHeight / 4, LV_DISPLAY_RENDER_MODE_PARTIAL);
 
-        // WiFi
-        WiFi.begin(WIFI_SSID, WIFI_PASS);
-        Serial0.print("[WiFi] Conectando");
-        while (WiFi.status() != WL_CONNECTED) { delay(500); Serial0.print('.'); }
-        Serial0.printf("\n[WiFi] IP: %s\n", WiFi.localIP().toString().c_str());
+    /* Initialize the (dummy) input device driver */
+    lv_indev_t * indev = lv_indev_create();
+    lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
+    lv_indev_set_read_cb(indev, my_touchpad_read);
+    lv_tick_set_cb(esp_tick_get_cb);
 
-        // Dashboard LVGL
-        dashboard_init();
+    // ─────────────────────────────────────────────────────────────────────
 
-        // Mutex + tarea de red en Core 0
-        g_mutex = xSemaphoreCreateMutex();
-        xTaskCreatePinnedToCore(
-            solarmanTask, "solarman",
-            8192, nullptr, 1,
-            nullptr, 0          // Core 0
-        );
-      }
+    // WiFi
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
+    Serial0.print("[WiFi] Conectando");
+    while (WiFi.status() != WL_CONNECTED) { delay(500); Serial0.print('.'); }
+    Serial0.printf("\n[WiFi] IP: %s\n", WiFi.localIP().toString().c_str());
+
+    // ── Tileview: dos pantallas horizontales ──────────────────────────────
+    lv_obj_t* tv = lv_tileview_create(lv_scr_act());
+    lv_obj_set_size(tv, 480, 272);
+    lv_obj_set_pos(tv, 0, 0);
+    lv_obj_set_scrollbar_mode(tv, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_style_bg_color(tv, lv_color_hex(0x0D1117), 0);
+
+    lv_obj_t* tile_dash  = lv_tileview_add_tile(tv, 0, 0, LV_DIR_RIGHT);
+    lv_obj_t* tile_stats = lv_tileview_add_tile(tv, 1, 0, LV_DIR_LEFT);
+
+    dashboard_init(tile_dash);
+    stats_screen_init(tile_stats);
+
+    // Mutex + tarea
+    g_mutex = xSemaphoreCreateMutex();
+    xTaskCreatePinnedToCore(solarmanTask, "solarman",
+                             8192, nullptr, 1, nullptr, 0);
 }
 
-// ── Loop (Core 1 – mismo que LVGL) ───────────────────────────────────────
+// ── Loop (Core 1) ─────────────────────────────────────────────────────────
 void loop() {
     lv_timer_handler();
 
-    // Publicar nuevos datos al dashboard si los hay
-    if (g_dataReady) {
-        if (xSemaphoreTake(g_mutex, 0) == pdTRUE) {
-            if (g_dataReady) {
-                dashboard_update(g_data);
-                g_dataReady = false;
-            }
-            xSemaphoreGive(g_mutex);
+    if (xSemaphoreTake(g_mutex, 0) == pdTRUE) {
+        if (g_energy_ready) {
+            dashboard_update(g_energy);
+            g_energy_ready = false;
         }
+        if (g_daily_ready) {
+            stats_screen_update(g_daily);
+            g_daily_ready = false;
+        }
+        xSemaphoreGive(g_mutex);
     }
 
     delay(5);

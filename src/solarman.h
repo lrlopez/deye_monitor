@@ -7,11 +7,21 @@ struct EnergyData {
     int32_t pv_power;    // W  (PV1 + PV2)
     int32_t pv1_power;   // W
     int32_t pv2_power;   // W
-    int32_t batt_power;  // W  (>0 cargando, <0 descargando)
+    int32_t batt_power;  // W  (<0 cargando, >0 descargando)
     int32_t batt_soc;    // %
     int32_t load_power;  // W
     int32_t grid_power;  // W  (>0 importando, <0 exportando)
     bool    valid;
+};
+
+struct DailyStats {
+    float pv_kwh;
+    float export_kwh;
+    float import_kwh;
+    float batt_charge_kwh;
+    float batt_discharge_kwh;
+    float load_kwh;
+    bool  valid;
 };
 
 class SolarmanClient {
@@ -20,6 +30,7 @@ public:
                    uint32_t loggerSerial, uint8_t unitId = 1);
 
     bool fetchEnergyData(EnergyData& out);
+    bool fetchDailyStats(DailyStats& out);
 
 private:
     const char* _ip;

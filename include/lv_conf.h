@@ -58,7 +58,7 @@
  * - LV_STDLIB_RTTHREAD:    RT-Thread implementation
  * - LV_STDLIB_CUSTOM:      Implement the functions externally
  */
-#define LV_USE_STDLIB_SPRINTF   LV_STDLIB_BUILTIN
+#define LV_USE_STDLIB_SPRINTF   LV_STDLIB_CLIB
 
 #define LV_STDINT_INCLUDE       <stdint.h>
 #define LV_STDDEF_INCLUDE       <stddef.h>
@@ -605,7 +605,7 @@
  * https://fonts.google.com/specimen/Montserrat */
 #define LV_FONT_MONTSERRAT_8  0
 #define LV_FONT_MONTSERRAT_10 0
-#define LV_FONT_MONTSERRAT_12 0
+#define LV_FONT_MONTSERRAT_12 1
 #define LV_FONT_MONTSERRAT_14 1
 #define LV_FONT_MONTSERRAT_16 0
 #define LV_FONT_MONTSERRAT_18 0
@@ -1467,6 +1467,8 @@
     /* Smart watch demo */
     #define LV_USE_DEMO_SMARTWATCH      0
 #endif /* LV_BUILD_DEMOS */
+
+#define LV_SPRINTF_DISABLE_FLOAT 0
 
 /*--END OF LV_CONF_H--*/
 

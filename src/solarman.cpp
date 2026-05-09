@@ -144,3 +144,35 @@ bool SolarmanClient::fetchEnergyData(EnergyData& out) {
     out.valid      = true;
     return true;
 }
+
+bool SolarmanClient::fetchDailyStats(DailyStats& out) {
+    uint16_t regs[REG_DAILY_COUNT];
+    if (!readRegisters(REG_DAILY_BASE, REG_DAILY_COUNT, regs)) {
+        out.valid = false;
+        return false;
+    }
+
+    out.batt_charge_kwh    = regs[IDX_D_BATT_CHG]  * 0.1f;
+    out.batt_discharge_kwh = regs[IDX_D_BATT_DIS]  * 0.1f;
+    out.import_kwh         = regs[IDX_D_GRID_BUY]  * 0.1f;
+    out.export_kwh         = regs[IDX_D_GRID_SELL] * 0.1f;
+    out.load_kwh           = regs[IDX_D_LOAD]       * 0.1f;
+    out.pv_kwh             = regs[IDX_D_PV]         * 0.1f;
+
+    // Verificación por balance energético (solo log, no sobreescribe)
+    // PV_calc = Load + Export − Import + BatCarga − BatDescarga
+    float pv_calc = out.load_kwh + out.export_kwh - out.import_kwh
+                  + out.batt_charge_kwh - out.batt_discharge_kwh;
+    float delta = out.pv_kwh - pv_calc;
+    if (fabsf(delta) > 0.5f)
+        Serial.printf("[Daily] AVISO balance: reg108=%.2f calc=%.2f diff=%.2f kWh\n",
+                      out.pv_kwh, pv_calc, delta);
+
+    out.valid = true;
+
+    Serial.printf("[Daily] PV:%.2f Exp:%.2f Imp:%.2f "
+                  "BatC:%.2f BatD:%.2f Load:%.2f kWh\n",
+                  out.pv_kwh, out.export_kwh, out.import_kwh,
+                  out.batt_charge_kwh, out.batt_discharge_kwh, out.load_kwh);
+    return true;
+}

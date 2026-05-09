@@ -66,8 +66,8 @@ static lv_obj_t* make_label(lv_obj_t* parent, int x, int y,
 }
 
 // ── Inicialización del dashboard ──────────────────────────────────────────
-void dashboard_init() {
-    lv_obj_t* scr = lv_scr_act();
+void dashboard_init(lv_obj_t* parent) {
+    lv_obj_t* scr = parent;
     lv_obj_set_style_bg_color(scr, C_BG, 0);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
 
@@ -154,10 +154,10 @@ void dashboard_update(const EnergyData& d) {
 
     if (d.batt_power > 0) {
         lv_label_set_text_fmt(lbl_batt_pwr, "+%d W", (int)d.batt_power);
-        lv_label_set_text(lbl_batt_sub, "Cargando");
+        lv_label_set_text(lbl_batt_sub, "Descargando");
     } else if (d.batt_power < 0) {
         lv_label_set_text_fmt(lbl_batt_pwr, "%d W", (int)d.batt_power);
-        lv_label_set_text(lbl_batt_sub, "Descargando");
+        lv_label_set_text(lbl_batt_sub, "Cargando");
     } else {
         lv_label_set_text(lbl_batt_pwr, "0 W");
         lv_label_set_text(lbl_batt_sub, "En reposo");
