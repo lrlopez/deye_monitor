@@ -1,12 +1,15 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <lvgl.h>
+#include <time.h>
+
 #include "config.h"
 #include "storage.h"
 #include "solarman.h"
 #include "dashboard.h"
 #include "stats_screen.h"
 #include "config_screen.h"
+#include "chart_screen.h"
 #include "web_server.h"
 
 /* Change to your screen resolution */
@@ -88,9 +91,18 @@ static DailyStats        g_daily;
 static SemaphoreHandle_t g_mutex;
 static volatile bool     g_energy_ready = false;
 static volatile bool     g_daily_ready  = false;
+static lv_obj_t*         g_tile_chart = nullptr;
 
 // Config en RAM cargada desde NVS al arrancar
 static AppConfig g_cfg;
+
+// Función delta con protección de rollover de medianoche
+static int16_t delta_wh(float cur, float prev) {
+    float d = cur - prev;
+    if (d < 0.0f) d = cur;           // reset de medianoche
+    int v = (int)(d * 1000.0f + 0.5f);
+    return (int16_t)(v > 32000 ? 32000 : v);
+}
 
 // ── Tarea de red (Core 0) ─────────────────────────────────────────────────
 static void solarmanTask(void* /*pv*/) {
@@ -100,6 +112,9 @@ static void solarmanTask(void* /*pv*/) {
     EnergyData  local_e;
     DailyStats  local_d;
     uint32_t    last_daily = millis() - POLL_DAILY_MS + POLL_INTERVAL_MS;
+
+    static DailyStats s_hour_snap;
+    static int        s_last_hour = -1;
 
     for (;;) {
         if (WiFi.status() != WL_CONNECTED) {
@@ -129,6 +144,46 @@ static void solarmanTask(void* /*pv*/) {
                         g_daily       = local_d;
                         g_daily_ready = true;
                         xSemaphoreGive(g_mutex);
+                    }
+                }
+                // Muestreo horario
+                struct tm tt;
+                if (getLocalTime(&tt, 500)) {
+                    int cur = tt.tm_hour;
+                    if (s_last_hour == -1) {
+                        // Primera lectura: tomar snapshot
+                        s_hour_snap = local_d;
+                        s_last_hour = cur;
+                    } else if (cur != s_last_hour && local_d.valid) {
+                        // La hora ha cambiado: construir y guardar registro
+                        HourlyRecord rec{};
+                        rec.pv_wh             = delta_wh(local_d.pv_kwh,             s_hour_snap.pv_kwh);
+                        rec.export_wh         = delta_wh(local_d.export_kwh,         s_hour_snap.export_kwh);
+                        rec.import_wh         = delta_wh(local_d.import_kwh,         s_hour_snap.import_kwh);
+                        rec.batt_charge_wh    = delta_wh(local_d.batt_charge_kwh,    s_hour_snap.batt_charge_kwh);
+                        rec.batt_discharge_wh = delta_wh(local_d.batt_discharge_kwh, s_hour_snap.batt_discharge_kwh);
+                        rec.load_wh           = delta_wh(local_d.load_kwh,           s_hour_snap.load_kwh);
+                        rec.soc               = (uint8_t)local_e.batt_soc;
+                        rec.valid             = 1;
+
+                        // Medianoche local del día en curso (que es s_last_hour, no cur)
+                        struct tm mid = tt;
+                        mid.tm_hour = 0; mid.tm_min = 0; mid.tm_sec = 0; mid.tm_isdst = -1;
+                        // Si la hora que termina es 23 y ahora es 0, ya estamos en otro día:
+                        // mktime con el tm actual y hora 0 ya da la medianoche correcta
+                        uint32_t day_ep = (uint32_t)mktime(&mid);
+                        if (s_last_hour == 23 && cur == 0)
+                            day_ep -= 86400;   // la hora 23 pertenece al día anterior
+
+                        Storage.saveHourlyRecord(day_ep, (uint8_t)s_last_hour, rec);
+                        Serial.printf("[Hourly] %02d:00 PV:%dWh Grid:%+dWh Bat:%+dWh Load:%dWh SOC:%d%%\n",
+                            s_last_hour,
+                            rec.pv_wh, (int)rec.import_wh - rec.export_wh,
+                            (int)rec.batt_charge_wh - rec.batt_discharge_wh,
+                            rec.load_wh, rec.soc);
+
+                        s_hour_snap = local_d;
+                        s_last_hour = cur;
                     }
                 }
                 last_daily = millis();
@@ -194,7 +249,16 @@ void setup() {
     else
         Serial0.println("\n[WiFi] Sin conexion – se reintentará en la tarea");
 
-    // ── Tileview: 3 pantallas horizontales ───────────────────────────────
+    // NTP
+    configTime(0, 0, "es.pool.ntp.org", "time.cloudflare.com");
+    setenv("TZ", TIMEZONE, 1);
+    tzset();
+    Serial.print("[NTP] Sincronizando");
+    struct tm ntp_t;
+    for (int i = 0; i < 20 && !getLocalTime(&ntp_t, 500); i++) Serial.print('.');
+    Serial.println(getLocalTime(&ntp_t, 0) ? " OK" : " TIMEOUT");
+
+    // ── Tileview: 4 pantallas horizontales ───────────────────────────────
     lv_obj_t* tv = lv_tileview_create(lv_scr_act());
     lv_obj_set_size(tv, 480, 272);
     lv_obj_set_pos(tv, 0, 0);
@@ -203,18 +267,26 @@ void setup() {
 
     lv_obj_t* tile_dash   = lv_tileview_add_tile(tv, 0, 0, LV_DIR_RIGHT);
     lv_obj_t* tile_stats  = lv_tileview_add_tile(tv, 1, 0, LV_DIR_HOR);
-    lv_obj_t* tile_config = lv_tileview_add_tile(tv, 2, 0, LV_DIR_LEFT);
+    g_tile_chart          = lv_tileview_add_tile(tv, 2, 0, LV_DIR_HOR);
+    lv_obj_t* tile_config = lv_tileview_add_tile(tv, 3, 0, LV_DIR_LEFT);
 
     dashboard_init(tile_dash);
     stats_screen_init(tile_stats);
+    chart_screen_init(g_tile_chart);
     config_screen_init(tile_config);
+
+    // Evento de cambio de tile → activa/desactiva refresco del chart
+    lv_obj_add_event_cb(tv, [](lv_event_t* e) {
+        lv_obj_t* tile = lv_tileview_get_tile_active(lv_event_get_target_obj(e));
+        chart_screen_set_active(tile == g_tile_chart);
+    }, LV_EVENT_VALUE_CHANGED, nullptr);
 
     // Mutex + tarea de red en Core 0
     g_mutex = xSemaphoreCreateMutex();
 
     webserver_set_data(g_mutex, &g_energy, &g_daily);
     webserver_begin();   // crea su propia tarea en Core 0
-    
+
     xTaskCreatePinnedToCore(solarmanTask, "solarman",
                              8192, nullptr, 1, nullptr, 0);
 }
@@ -230,6 +302,7 @@ void loop() {
     }
 
     config_screen_tick();   // refresca IP/RSSI cada 5 s, coste mínimo
+    chart_screen_tick();
 
     delay(5);
 }

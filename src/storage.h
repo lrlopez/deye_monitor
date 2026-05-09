@@ -22,8 +22,32 @@ struct DailyRecord {
     float    batt_discharge_kwh;
 };
 
-// Cuántos días guardamos (cada registro ocupa ~28 bytes)
-// NVS tiene ~20 KB libres típicamente → 90 días = 2520 bytes, muy holgado
+// ── Registro horario ──────────────────────────────────────────────────────
+// Valores en Wh (deltas del periodo). int16_t → max 32767 Wh/h, suficiente para 6 kW.
+struct HourlyRecord {
+    int16_t pv_wh;
+    int16_t export_wh;
+    int16_t import_wh;
+    int16_t batt_charge_wh;
+    int16_t batt_discharge_wh;
+    int16_t load_wh;
+    uint8_t soc;      // % al final del periodo
+    uint8_t valid;    // 0 = sin dato
+};  // 14 bytes
+
+// Un día completo = 24 registros horarios
+struct DayData {
+    uint32_t     day_epoch;   // medianoche local (epoch)
+    HourlyRecord hours[24];
+};  // 4 + 24×14 = 340 bytes — 7 días = 2380 bytes en NVS
+
+// ── Config de la gráfica ──────────────────────────────────────────────────
+struct ChartConfig {
+    bool    autoscale;
+    uint8_t max_kw;
+};
+
+// Cuántos días guardamos 
 constexpr uint8_t DAILY_HISTORY_SIZE = 90;
 
 class StorageManager {
@@ -40,9 +64,13 @@ public:
     // ── Histórico diario ──────────────────────────────────────────────────
     // Añade o sobreescribe el registro del día indicado por timestamp.
     // Uso futuro desde la tarea de red al finalizar cada día.
-    void      pushDailyRecord(const DailyRecord& rec);
-    uint8_t   getDailyHistory(DailyRecord* out, uint8_t maxCount);
-    void      clearDailyHistory();
+    void        pushDailyRecord(const DailyRecord& rec);
+    uint8_t     getDailyHistory(DailyRecord* out, uint8_t maxCount);
+    void        clearDailyHistory();
+    void        saveHourlyRecord(uint32_t day_epoch, uint8_t hour, const HourlyRecord& rec);
+    bool        getDayData(uint32_t day_epoch, DayData& out);
+    void        saveChartConfig(const ChartConfig& cfg);
+    ChartConfig loadChartConfig();
 
 private:
     StorageManager() = default;
@@ -53,8 +81,8 @@ private:
         uint8_t count;  // cuántos registros válidos hay
     };
 
-    void      readMeta(HistMeta& m);
-    void      writeMeta(const HistMeta& m);
+    void        readMeta(HistMeta& m);
+    void        writeMeta(const HistMeta& m);
     DailyRecord readRecord(uint8_t idx);
     void        writeRecord(uint8_t idx, const DailyRecord& r);
 };

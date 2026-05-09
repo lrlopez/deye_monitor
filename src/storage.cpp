@@ -4,6 +4,7 @@
 // ── Namespaces NVS ────────────────────────────────────────────────────────
 static const char* NS_CFG    = "cfg";
 static const char* NS_HIST_D = "hist_d";
+static const char* NS_HIST_H = "hist_h";
 
 // ── Claves config ─────────────────────────────────────────────────────────
 static const char* K_SSID    = "ssid";
@@ -35,7 +36,7 @@ void StorageManager::loadConfig(AppConfig& out) {
     lip.toCharArray(out.logger_ip,     sizeof(out.logger_ip));
 
     p.end();
-    Serial.printf("[NVS] Config cargada: SSID=%s  IP=%s  Serial=%lu\n",
+    Serial0.printf("[NVS] Config cargada: SSID=%s  IP=%s  Serial=%lu\n",
                   out.wifi_ssid, out.logger_ip, (unsigned long)out.logger_serial);
 }
 
@@ -47,7 +48,7 @@ void StorageManager::saveConfig(const AppConfig& cfg) {
     p.putString(K_LIP,     cfg.logger_ip);
     p.putULong(K_LSERIAL,  cfg.logger_serial);
     p.end();
-    Serial.println("[NVS] Config guardada");
+    Serial0.println("[NVS] Config guardada");
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -109,7 +110,7 @@ void StorageManager::pushDailyRecord(const DailyRecord& rec) {
 
     writeRecord(writeIdx, rec);
     writeMeta(m);
-    Serial.printf("[NVS] Registro diario guardado en slot %d (%d/%d)\n",
+    Serial0.printf("[NVS] Registro diario guardado en slot %d (%d/%d)\n",
                   writeIdx, m.count, DAILY_HISTORY_SIZE);
 }
 
@@ -127,5 +128,67 @@ uint8_t StorageManager::getDailyHistory(DailyRecord* out, uint8_t maxCount) {
 void StorageManager::clearDailyHistory() {
     HistMeta m{0, 0};
     writeMeta(m);
-    Serial.println("[NVS] Histórico diario borrado");
+    Serial0.println("[NVS] Histórico diario borrado");
+}
+
+// ── Histórico horario ─────────────────────────────────────────────────────
+// Slot = (day_epoch / 86400) % 7  →  claves "d0".."d6"
+// El campo DayData::day_epoch distingue la semana actual de hace 7 días.
+
+void StorageManager::saveHourlyRecord(uint32_t day_epoch, uint8_t hour,
+                                      const HourlyRecord& rec) {
+    if (hour >= 24) return;
+    uint8_t slot = (day_epoch / 86400) % 7;
+    char    key[3]; snprintf(key, sizeof(key), "d%d", slot);
+
+    DayData dd{};
+    Preferences p;
+    p.begin(NS_HIST_H, true);
+    if (p.getBytesLength(key) == sizeof(DayData))
+        p.getBytes(key, &dd, sizeof(dd));
+    p.end();
+
+    if (dd.day_epoch != day_epoch) {   // slot de otro día → resetear
+        dd = DayData{};
+        dd.day_epoch = day_epoch;
+    }
+    dd.hours[hour] = rec;
+
+    p.begin(NS_HIST_H, false);
+    p.putBytes(key, &dd, sizeof(dd));
+    p.end();
+
+    Serial0.printf("[NVS] Hora %02d guardada en slot d%d\n", hour, slot);
+}
+
+bool StorageManager::getDayData(uint32_t day_epoch, DayData& out) {
+    uint8_t slot = (day_epoch / 86400) % 7;
+    char    key[3]; snprintf(key, sizeof(key), "d%d", slot);
+
+    Preferences p;
+    p.begin(NS_HIST_H, true);
+    bool ok = (p.getBytesLength(key) == sizeof(DayData));
+    if (ok) p.getBytes(key, &out, sizeof(out));
+    p.end();
+
+    return ok && (out.day_epoch == day_epoch);
+}
+
+// ── Config gráfica ────────────────────────────────────────────────────────
+void StorageManager::saveChartConfig(const ChartConfig& cfg) {
+    Preferences p;
+    p.begin(NS_CFG, false);
+    p.putBool("ch_auto", cfg.autoscale);
+    p.putUChar("ch_kw",  cfg.max_kw);
+    p.end();
+}
+
+ChartConfig StorageManager::loadChartConfig() {
+    Preferences p;
+    p.begin(NS_CFG, true);
+    ChartConfig cfg;
+    cfg.autoscale = p.getBool("ch_auto",  CHART_AUTOSCALE_DEF);
+    cfg.max_kw    = p.getUChar("ch_kw",   CHART_MAX_KW_DEF);
+    p.end();
+    return cfg;
 }

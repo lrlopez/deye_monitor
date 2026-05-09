@@ -43,3 +43,10 @@
 // ── Polling ───────────────────────────────────────────────────────────────
 #define POLL_INTERVAL_MS  5000
 #define POLL_DAILY_MS     60000UL
+
+// ── Zona horaria ──────────────────────────────────────────────────────────
+#define TIMEZONE            "CET-1CEST,M3.5.0,M10.5.0/3"   // España peninsula
+
+// ── Escala gráfica ────────────────────────────────────────────────────────
+#define CHART_AUTOSCALE_DEF  true
+#define CHART_MAX_KW_DEF     6

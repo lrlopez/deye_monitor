@@ -31,6 +31,8 @@ static lv_obj_t* lbl_ip;
 static lv_obj_t* lbl_rssi;
 static lv_obj_t* lbl_status;
 static lv_obj_t* kb;
+static lv_obj_t* cb;
+static lv_obj_t* ta_kw;
 
 static uint32_t  s_last_net_refresh = 0;
 
@@ -124,7 +126,13 @@ static void ta_event_cb(lv_event_t* e) {
 // ── Callback botón Guardar ────────────────────────────────────────────────
 static void save_btn_cb(lv_event_t* /*e*/) {
     AppConfig cfg;
-
+    ChartConfig ccfg2;
+    
+    // Guardar información de la escala de la gráfica
+    ccfg2.autoscale = lv_obj_has_state(cb, LV_STATE_CHECKED);
+    ccfg2.max_kw    = (uint8_t)atoi(lv_textarea_get_text(ta_kw));
+    Storage.saveChartConfig(ccfg2);
+    
     // Leer textareas
     strncpy(cfg.wifi_ssid,  lv_textarea_get_text(ta_ssid),          sizeof(cfg.wifi_ssid) - 1);
     strncpy(cfg.wifi_pass,  lv_textarea_get_text(ta_pass),          sizeof(cfg.wifi_pass) - 1);
@@ -188,12 +196,39 @@ void config_screen_init(lv_obj_t* parent) {
     lv_obj_add_event_cb(ta_logger_ip,     ta_event_cb, LV_EVENT_DEFOCUSED, nullptr);
     lv_obj_add_event_cb(ta_logger_serial, ta_event_cb, LV_EVENT_FOCUSED,   nullptr);
     lv_obj_add_event_cb(ta_logger_serial, ta_event_cb, LV_EVENT_DEFOCUSED, nullptr);
+    
+    // ── Sección Gráfica (y=256, h=114) ─────────────────────────────────────────
+    lv_obj_t* sec_chart = make_section(parent, LV_SYMBOL_CHARGE " GRAFICA", 256, 114);
 
-    // ── Sección Estado de red (y=256, h=60) ───────────────────────────────
+    ChartConfig ccfg = Storage.loadChartConfig();
+
+    // Checkbox autoscale
+    cb = lv_checkbox_create(sec_chart);
+    lv_obj_set_pos(cb, 0, 18);
+    lv_checkbox_set_text(cb, "Autoescalado");
+    lv_obj_set_style_text_font(cb, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(cb, C_WHITE, 0);
+    if (ccfg.autoscale) lv_obj_add_state(cb, LV_STATE_CHECKED);
+
+    // Spinbox max kW (visible solo si !autoscale)
+    lv_obj_t* lbl_kw = lv_label_create(sec_chart);
+    lv_obj_set_pos(lbl_kw, 0, 44);
+    lv_obj_set_style_text_font(lbl_kw, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(lbl_kw, C_MUTED, 0);
+    lv_label_set_text(lbl_kw, "Maximo kW:");
+
+    ta_kw = make_field_row(sec_chart, 40, "Max kW", false, "6");
+    lv_textarea_set_max_length(ta_kw, 2);
+    char kw_buf[4]; snprintf(kw_buf, sizeof(kw_buf), "%d", ccfg.max_kw);
+    lv_textarea_set_text(ta_kw, kw_buf);
+    lv_obj_add_event_cb(ta_kw, ta_event_cb, LV_EVENT_FOCUSED,   nullptr);
+    lv_obj_add_event_cb(ta_kw, ta_event_cb, LV_EVENT_DEFOCUSED, nullptr);
+
+    // ── Sección Estado de red (y=256, h=70) ───────────────────────────────
     // Queda debajo del área visible → se verá al hacer scroll si el teclado
     // no está activo; si prefieres, sube todo el layout 20px.
     // Optamos por ponerla en el margen inferior visible sin teclado.
-    lv_obj_t* sec_net = make_section(parent, "ESTADO RED", 256, 60);  // fuera; ver nota
+    lv_obj_t* sec_net = make_section(parent, "ESTADO RED", 256 + 114, 70);  // fuera; ver nota
 
     lbl_ip   = make_info_row(sec_net,  18, "IP ESP32");
     lbl_rssi = make_info_row(sec_net,  36, "Senial WiFi");
@@ -202,7 +237,7 @@ void config_screen_init(lv_obj_t* parent) {
     // Fijo en la parte derecha fuera de las secciones para que siempre
     // sea visible sin teclado
     lv_obj_t* btn = lv_btn_create(parent);
-    lv_obj_set_pos(btn, 340, 230);
+    lv_obj_set_pos(btn, 340, 230 + 114);
     lv_obj_set_size(btn, 130, 36);
     lv_obj_set_style_bg_color(btn, C_BTN, 0);
     lv_obj_set_style_radius(btn, 6, 0);
@@ -214,7 +249,7 @@ void config_screen_init(lv_obj_t* parent) {
     lv_obj_center(btn_lbl);
 
     lbl_status = lv_label_create(parent);
-    lv_obj_set_pos(lbl_status, 10, 238);
+    lv_obj_set_pos(lbl_status, 10, 238 + 114);
     lv_obj_set_width(lbl_status, 320);
     lv_obj_set_style_text_font(lbl_status, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(lbl_status, C_MUTED, 0);
