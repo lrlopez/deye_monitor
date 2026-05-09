@@ -196,7 +196,7 @@ void config_screen_init(lv_obj_t* parent) {
     lv_obj_t* sec_net = make_section(parent, "ESTADO RED", 256, 60);  // fuera; ver nota
 
     lbl_ip   = make_info_row(sec_net,  18, "IP ESP32");
-    lbl_rssi = make_info_row(sec_net,  36, "Señal WiFi");
+    lbl_rssi = make_info_row(sec_net,  36, "Senial WiFi");
 
     // ── Botón Guardar + label estado ──────────────────────────────────────
     // Fijo en la parte derecha fuera de las secciones para que siempre

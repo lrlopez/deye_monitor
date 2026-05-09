@@ -7,6 +7,7 @@
 #include "dashboard.h"
 #include "stats_screen.h"
 #include "config_screen.h"
+#include "web_server.h"
 
 /* Change to your screen resolution */
 static uint32_t screenWidth = 480;
@@ -210,6 +211,10 @@ void setup() {
 
     // Mutex + tarea de red en Core 0
     g_mutex = xSemaphoreCreateMutex();
+
+    webserver_set_data(g_mutex, &g_energy, &g_daily);
+    webserver_begin();   // crea su propia tarea en Core 0
+    
     xTaskCreatePinnedToCore(solarmanTask, "solarman",
                              8192, nullptr, 1, nullptr, 0);
 }
