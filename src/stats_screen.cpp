@@ -109,13 +109,21 @@ static lv_obj_t* make_arc_seg(lv_obj_t* p, int cx, int cy, lv_color_t col) {
 static void update_donut(lv_obj_t* arcs[], const float vals[], int n, float total) {
     float cum = 0.0f;
     for (int i = 0; i < n; i++) {
-        float f = (total > 0.01f) ? vals[i]/total : 0.0f;
-        f = f < 0 ? 0 : (f > 1 ? 1 : f);
+        float f = (total > 0.01f) ? vals[i] / total : 0.0f;
+        f = f < 0.0f ? 0.0f : (f > 1.0f ? 1.0f : f);
+
         if (f < 0.005f) {
+            // Segmento invisible
             lv_arc_set_angles(arcs[i], 270, 270);
+
+        } else if (f > 0.995f) {
+            // Segmento del 100%: círculo completo
+            // lv_arc no acepta 0→360, usar 0→359
+            lv_arc_set_angles(arcs[i], 0, 359);
+
         } else {
-            uint16_t a0 = (uint16_t)fmodf(cum*360.0f+270.0f, 360.0f);
-            uint16_t a1 = (uint16_t)fmodf((cum+f)*360.0f+270.0f, 360.0f);
+            uint16_t a0 = (uint16_t)fmodf(cum * 360.0f + 270.0f, 360.0f);
+            uint16_t a1 = (uint16_t)fmodf((cum + f) * 360.0f + 270.0f, 360.0f);
             lv_arc_set_angles(arcs[i], a0, a1);
         }
         cum += f;
