@@ -173,10 +173,10 @@ void dashboard_update(const EnergyData& d) {
     lv_label_set_text_fmt(lbl_batt_soc, "%d%%", (int)d.batt_soc);
     if (d.batt_power > 0) {
         lv_label_set_text_fmt(lbl_batt_pwr, "+%d W", (int)d.batt_power);
-        lv_label_set_text(lbl_batt_sub, "Cargando");
+        lv_label_set_text(lbl_batt_sub, "Descargando");
     } else if (d.batt_power < 0) {
         lv_label_set_text_fmt(lbl_batt_pwr, "%d W", (int)d.batt_power);
-        lv_label_set_text(lbl_batt_sub, "Descargando");
+        lv_label_set_text(lbl_batt_sub, "Cargando");
     } else {
         lv_label_set_text(lbl_batt_pwr, "0 W");
         lv_label_set_text(lbl_batt_sub, "En reposo");
