@@ -218,3 +218,31 @@ bool StorageManager::loadSessionState(SessionState& s) {
     p.end();
     return ok && s.valid;
 }
+
+void StorageManager::saveTelegramConfig(const TelegramConfig& cfg) {
+    Preferences p;
+    p.begin(NS_CFG, false);
+    p.putString("tg_token",  cfg.token);
+    p.putString("tg_chatid", cfg.chat_id);
+    p.putUChar("tg_batt",    cfg.batt_threshold);
+    p.putBool("tg_solar",    cfg.notify_solar);
+    p.putBool("tg_grid",     cfg.notify_grid);
+    p.putBool("tg_logger",   cfg.notify_logger);
+    p.end();
+}
+
+TelegramConfig StorageManager::loadTelegramConfig() {
+    TelegramConfig cfg{};
+    Preferences p;
+    p.begin(NS_CFG, true);
+    String tok = p.getString("tg_token",  "");
+    String cid = p.getString("tg_chatid", "");
+    tok.toCharArray(cfg.token,   sizeof(cfg.token));
+    cid.toCharArray(cfg.chat_id, sizeof(cfg.chat_id));
+    cfg.batt_threshold = p.getUChar("tg_batt",  20);
+    cfg.notify_solar   = p.getBool("tg_solar",  true);
+    cfg.notify_grid    = p.getBool("tg_grid",   true);
+    cfg.notify_logger  = p.getBool("tg_logger", true);
+    p.end();
+    return cfg;
+}

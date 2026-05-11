@@ -62,6 +62,15 @@ struct ChartConfig {
 // Cuántos días guardamos 
 constexpr uint8_t DAILY_HISTORY_SIZE = 90;
 
+struct TelegramConfig {
+    char    token[64];
+    char    chat_id[32];
+    uint8_t batt_threshold;   // % — alerta si SOC < este valor
+    bool    notify_solar;     // notificar inicio/fin de producción
+    bool    notify_grid;      // notificar corte/restauración de red
+    bool    notify_logger;    // notificar fallo de comunicación
+};
+
 class StorageManager {
 public:
     static StorageManager& instance() {
@@ -76,17 +85,18 @@ public:
     // ── Histórico diario ──────────────────────────────────────────────────
     // Añade o sobreescribe el registro del día indicado por timestamp.
     // Uso futuro desde la tarea de red al finalizar cada día.
-    void        pushDailyRecord(const DailyRecord& rec);
-    uint8_t     getDailyHistory(DailyRecord* out, uint8_t maxCount);
-    void        clearDailyHistory();
-    void        saveHourlyRecord(uint32_t day_epoch, uint8_t hour, const HourlyRecord& rec);
-    bool        getDayData(uint32_t day_epoch, DayData& out);
-    void        saveChartConfig(const ChartConfig& cfg);
-    ChartConfig loadChartConfig();
-    bool        getDayRecord(uint32_t day_epoch, DailyRecord& out);
-    void        saveSessionState(const SessionState& s);
-    bool        loadSessionState(SessionState& s);
-
+    void           pushDailyRecord(const DailyRecord& rec);
+    uint8_t        getDailyHistory(DailyRecord* out, uint8_t maxCount);
+    void           clearDailyHistory();
+    void           saveHourlyRecord(uint32_t day_epoch, uint8_t hour, const HourlyRecord& rec);
+    bool           getDayData(uint32_t day_epoch, DayData& out);
+    void           saveChartConfig(const ChartConfig& cfg);
+    ChartConfig    loadChartConfig();
+    bool           getDayRecord(uint32_t day_epoch, DailyRecord& out);
+    void           saveSessionState(const SessionState& s);
+    bool           loadSessionState(SessionState& s);
+    void           saveTelegramConfig(const TelegramConfig& cfg);
+    TelegramConfig loadTelegramConfig();
 private:
     StorageManager() = default;
 

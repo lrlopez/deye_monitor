@@ -1,6 +1,7 @@
+#include <WiFi.h>
 #include "config_screen.h"
 #include "storage.h"
-#include <WiFi.h>
+#include "telegram.h"
 
 // ── Paleta ────────────────────────────────────────────────────────────────
 #define C_BG    lv_color_hex(0x0D1117)
@@ -41,6 +42,12 @@ static lv_obj_t* lbl_ip;
 static lv_obj_t* lbl_rssi;
 static lv_obj_t* lbl_status;
 static lv_obj_t* kb;
+static lv_obj_t* s_ta_tg_token   = nullptr;
+static lv_obj_t* s_ta_tg_chatid  = nullptr;
+static lv_obj_t* s_slider_tg_thr = nullptr;
+static lv_obj_t* s_cb_tg_solar   = nullptr;
+static lv_obj_t* s_cb_tg_grid    = nullptr;
+static lv_obj_t* s_cb_tg_logger  = nullptr;
 
 // ── Widgets scan WiFi ─────────────────────────────────────────────────────
 static lv_obj_t*  scan_btn;
@@ -321,6 +328,18 @@ static void save_btn_cb(lv_event_t* /*e*/) {
     Storage.saveConfig(cfg);
     Storage.saveChartConfig(ccfg);
 
+    TelegramConfig tgcfg{};
+    strncpy(tgcfg.token,   lv_textarea_get_text(s_ta_tg_token),
+            sizeof(tgcfg.token) - 1);
+    strncpy(tgcfg.chat_id, lv_textarea_get_text(s_ta_tg_chatid),
+            sizeof(tgcfg.chat_id) - 1);
+    tgcfg.batt_threshold = (uint8_t)lv_slider_get_value(s_slider_tg_thr);
+    tgcfg.notify_solar   = lv_obj_has_state(s_cb_tg_solar,  LV_STATE_CHECKED);
+    tgcfg.notify_grid    = lv_obj_has_state(s_cb_tg_grid,   LV_STATE_CHECKED);
+    tgcfg.notify_logger  = lv_obj_has_state(s_cb_tg_logger, LV_STATE_CHECKED);
+    Storage.saveTelegramConfig(tgcfg);
+    Telegram.setCredentials(tgcfg.token, tgcfg.chat_id);
+
     lv_label_set_text(lbl_status, LV_SYMBOL_OK " Guardado. Reiniciando...");
     lv_obj_set_style_text_color(lbl_status, C_OK, 0);
     lv_timer_handler();
@@ -469,16 +488,114 @@ void config_screen_init(lv_obj_t* parent) {
     lbl_ip   = make_info_row(sec_net, 18, "IP ESP32");
     lbl_rssi = make_info_row(sec_net, 38, "Senal WiFi");
 
+    // ── Sección Telegram (y=432, h=178) ───────────────────────────────────
+    TelegramConfig tgcfg = Storage.loadTelegramConfig();
+
+    lv_obj_t* sec_tg = make_section(parent, LV_SYMBOL_BELL " TELEGRAM", 432, 178);
+
+    // Token
+    make_row_label(sec_tg, 18, "Bot Token");
+    lv_obj_t* ta_token = make_field(sec_tg, LBL_W, 18,
+                                     SECTION_W - LBL_W - SEC_PAD, false, "123456:ABC...");
+    lv_textarea_set_text(ta_token, tgcfg.token);
+    lv_obj_add_event_cb(ta_token, ta_event_cb, LV_EVENT_FOCUSED,   nullptr);
+    lv_obj_add_event_cb(ta_token, ta_event_cb, LV_EVENT_DEFOCUSED, nullptr);
+
+    // Chat ID
+    make_row_label(sec_tg, 62, "Chat ID");
+    lv_obj_t* ta_chatid = make_field(sec_tg, LBL_W, 62,
+                                      SECTION_W - LBL_W - SEC_PAD, false, "-100123456789");
+    lv_textarea_set_text(ta_chatid, tgcfg.chat_id);
+    lv_obj_add_event_cb(ta_chatid, ta_event_cb, LV_EVENT_FOCUSED,   nullptr);
+    lv_obj_add_event_cb(ta_chatid, ta_event_cb, LV_EVENT_DEFOCUSED, nullptr);
+
+    // Umbral batería
+    lv_obj_t* lbl_thr = lv_label_create(sec_tg);
+    lv_obj_set_pos(lbl_thr, 0, 106);
+    lv_obj_set_style_text_font(lbl_thr, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(lbl_thr, C_MUTED, 0);
+    lv_label_set_text(lbl_thr, "Alerta bat.:");
+
+    lv_obj_t* lbl_thr_val = lv_label_create(sec_tg);
+    lv_obj_set_pos(lbl_thr_val, 90, 106);
+    lv_obj_set_style_text_font(lbl_thr_val, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(lbl_thr_val, C_WHITE, 0);
+    char thrbuf[8];
+    snprintf(thrbuf, sizeof(thrbuf), "%d%%", tgcfg.batt_threshold);
+    lv_label_set_text(lbl_thr_val, thrbuf);
+
+    lv_obj_t* slider_thr = lv_slider_create(sec_tg);
+    lv_obj_set_pos(slider_thr, 110 + 24, 110);
+    lv_obj_set_size(slider_thr, SECTION_W - 110 - 40, 16);
+    lv_slider_set_range(slider_thr, 5, 50);
+    lv_slider_set_value(slider_thr, tgcfg.batt_threshold, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(slider_thr, C_BTN,                  LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(slider_thr, lv_color_hex(0x21262D), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(slider_thr, C_WHITE,                LV_PART_KNOB);
+    lv_obj_set_style_pad_all(slider_thr, 4,                       LV_PART_KNOB);
+    lv_obj_add_event_cb(slider_thr, [](lv_event_t* e) {
+        lv_obj_t* sl  = (lv_obj_t*)lv_event_get_target(e);
+        lv_obj_t* lbl = (lv_obj_t*)lv_event_get_user_data(e);
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%d%%", (int)lv_slider_get_value(sl));
+        lv_label_set_text(lbl, buf);
+    }, LV_EVENT_VALUE_CHANGED, lbl_thr_val);
+
+    // Checkboxes de alertas
+    lv_obj_t* cb_solar = lv_checkbox_create(sec_tg);
+    lv_obj_set_pos(cb_solar, 0, 132);
+    lv_checkbox_set_text(cb_solar, "Solar");
+    lv_obj_set_style_text_font(cb_solar, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(cb_solar, C_WHITE, 0);
+    if (tgcfg.notify_solar) lv_obj_add_state(cb_solar, LV_STATE_CHECKED);
+
+    lv_obj_t* cb_grid = lv_checkbox_create(sec_tg);
+    lv_obj_set_pos(cb_grid, 90, 132);
+    lv_checkbox_set_text(cb_grid, "Red");
+    lv_obj_set_style_text_font(cb_grid, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(cb_grid, C_WHITE, 0);
+    if (tgcfg.notify_grid) lv_obj_add_state(cb_grid, LV_STATE_CHECKED);
+
+    lv_obj_t* cb_logger = lv_checkbox_create(sec_tg);
+    lv_obj_set_pos(cb_logger, 165, 132);
+    lv_checkbox_set_text(cb_logger, "Logger");
+    lv_obj_set_style_text_font(cb_logger, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(cb_logger, C_WHITE, 0);
+    if (tgcfg.notify_logger) lv_obj_add_state(cb_logger, LV_STATE_CHECKED);
+
+    // Botón de prueba
+    lv_obj_t* btn_test = lv_btn_create(sec_tg);
+    lv_obj_set_pos(btn_test, SECTION_W - SEC_PAD*2 - 110, 128);
+    lv_obj_set_size(btn_test, 110, 30);
+    lv_obj_set_style_bg_color(btn_test, lv_color_hex(0x2D7D46), 0);
+    lv_obj_set_style_radius(btn_test, 6, 0);
+    lv_obj_add_event_cb(btn_test, [](lv_event_t*) {
+        Telegram.enqueue(AlertType::TEST);
+    }, LV_EVENT_CLICKED, nullptr);
+    lv_obj_t* lbl_test = lv_label_create(btn_test);
+    lv_label_set_text(lbl_test, LV_SYMBOL_BELL " Probar");
+    lv_obj_set_style_text_font(lbl_test, &lv_font_montserrat_12, 0);
+    lv_obj_center(lbl_test);
+
+    // Guardar referencias para save_btn_cb
+    // (añadir como static al principio del fichero)
+    s_ta_tg_token   = ta_token;
+    s_ta_tg_chatid  = ta_chatid;
+    s_slider_tg_thr = slider_thr;
+    s_cb_tg_solar   = cb_solar;
+    s_cb_tg_grid    = cb_grid;
+    s_cb_tg_logger  = cb_logger;
+
     // ── Botón Guardar + status  (bajan acordes) ───────────────────────────────
     lbl_status = lv_label_create(parent);
-    lv_obj_set_pos(lbl_status, 10, 438);
+    lv_obj_set_pos(lbl_status, 10, 626);
     lv_obj_set_width(lbl_status, 310);
     lv_obj_set_style_text_font(lbl_status, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(lbl_status, C_MUTED, 0);
     lv_label_set_text(lbl_status, "");
 
     lv_obj_t* btn = lv_btn_create(parent);
-    lv_obj_set_pos(btn, 340, 432);
+    lv_obj_set_pos(btn, 340, 620);
     lv_obj_set_size(btn, 130, 36);
     lv_obj_set_style_bg_color(btn, C_BTN, 0);
     lv_obj_set_style_radius(btn, 6, 0);

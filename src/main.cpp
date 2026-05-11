@@ -12,6 +12,7 @@
 #include "chart_screen.h"
 #include "config_screen.h"
 #include "web_server.h"
+#include "telegram.h"
 
 /* Change to your screen resolution */
 static uint32_t screenWidth = 480;
@@ -122,6 +123,15 @@ static void solarmanTask(void* /*pv*/) {
     static int        s_last_day = -1;
     static bool          s_startup_done   = false;
     static SessionState  s_session{};
+
+    static bool     s_batt_alerted      = false;
+    static bool     s_solar_on          = false;
+    static bool     s_grid_ok           = true;
+    static int      s_logger_fails      = 0;
+    static uint32_t s_last_batt_alert   = 0;
+    static uint32_t s_last_solar_alert  = 0;
+    static uint32_t s_last_grid_alert   = 0;
+    static uint32_t s_last_logger_alert = 0;
 
     for (;;) {
         if (WiFi.status() != WL_CONNECTED) {
@@ -245,6 +255,73 @@ static void solarmanTask(void* /*pv*/) {
                         Storage.saveSessionState(ss);
                     }
                 }
+                TelegramConfig tgc = Storage.loadTelegramConfig();
+                uint32_t now_ms    = millis();
+
+                // ── Fallo de logger ───────────────────────────────────────────────────
+                if (!local_e.valid) {
+                    s_logger_fails++;
+                    if (tgc.notify_logger
+                        && s_logger_fails >= 3
+                        && now_ms - s_last_logger_alert > 600000UL) {
+                        Telegram.enqueue(AlertType::LOGGER_FAIL, s_logger_fails);
+                        s_last_logger_alert = now_ms;
+                    }
+                } else {
+                    s_logger_fails = 0;
+                }
+
+                if (!local_e.valid) goto end_alerts;
+
+                // ── Batería baja / recuperada ─────────────────────────────────────────
+                if (local_e.batt_soc < tgc.batt_threshold) {
+                    if (!s_batt_alerted
+                        && now_ms - s_last_batt_alert > 1800000UL) {
+                        Telegram.enqueue(AlertType::BATT_LOW, local_e.batt_soc);
+                        s_batt_alerted    = true;
+                        s_last_batt_alert = now_ms;
+                    }
+                } else if (local_e.batt_soc > tgc.batt_threshold + 10) {
+                    if (s_batt_alerted
+                        && now_ms - s_last_batt_alert > 1800000UL) {
+                        Telegram.enqueue(AlertType::BATT_RECOVERED, local_e.batt_soc);
+                        s_batt_alerted    = false;
+                        s_last_batt_alert = now_ms;
+                    }
+                }
+
+                // ── Solar arranca / para ──────────────────────────────────────────────
+                if (tgc.notify_solar
+                    && now_ms - s_last_solar_alert > 300000UL) {
+                    bool pv_active = (local_e.pv_power > 100);
+                    if (pv_active && !s_solar_on) {
+                        Telegram.enqueue(AlertType::SOLAR_START, local_e.pv_power);
+                        s_last_solar_alert = now_ms;
+                    } else if (!pv_active && s_solar_on) {
+                        Telegram.enqueue(AlertType::SOLAR_STOP, 0);
+                        s_last_solar_alert = now_ms;
+                    }
+                    s_solar_on = pv_active;
+                }
+
+                // ── Corte / restauración de red ───────────────────────────────────────
+                if (tgc.notify_grid
+                    && now_ms - s_last_grid_alert > 600000UL) {
+                    // Detectamos corte cuando importamos mucho de golpe sin solar
+                    bool grid_problem = (local_e.grid_power > 3000
+                                        && local_e.pv_power < 100);
+                    if (grid_problem && s_grid_ok) {
+                        Telegram.enqueue(AlertType::GRID_OUTAGE, local_e.grid_power);
+                        s_grid_ok          = false;
+                        s_last_grid_alert  = now_ms;
+                    } else if (!grid_problem && !s_grid_ok) {
+                        Telegram.enqueue(AlertType::GRID_RESTORED, 0);
+                        s_grid_ok         = true;
+                        s_last_grid_alert = now_ms;
+                    }
+                }
+
+                end_alerts:;
                 // Muestreo horario
                 struct tm tt;
                 if (local_d.valid && getLocalTime(&tt, 500)) {
@@ -390,6 +467,12 @@ void setup() {
     struct tm ntp_t;
     for (int i = 0; i < 20 && !getLocalTime(&ntp_t, 500); i++) Serial0.print('.');
     Serial0.println(getLocalTime(&ntp_t, 0) ? " OK" : " TIMEOUT");
+
+    // Telegram
+    TelegramConfig tgcfg = Storage.loadTelegramConfig();
+    Serial0.print("[Telegram] Init...");
+    Telegram.begin(tgcfg.token, tgcfg.chat_id);
+    Serial0.println(" OK");
 
     // ── Tileview: 4 pantallas horizontales ───────────────────────────────
     lv_obj_t* tv = lv_tileview_create(lv_scr_act());
