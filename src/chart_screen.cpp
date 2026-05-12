@@ -1,6 +1,7 @@
-#include "chart_screen.h"
-#include "storage.h"
 #include <time.h>
+#include "chart_screen.h"
+#include "data_store.h"
+#include "storage.h"
 
 // ── Paleta ────────────────────────────────────────────────────────────────
 #define C_BG    lv_color_hex(0x0D1117)
@@ -31,13 +32,14 @@
 #define CH_PAD_TV  4
 
 // ── Estado ────────────────────────────────────────────────────────────────
-static DayData  s_day;
 static int      s_offset      = 0;    // 0=hoy, -1=ayer, …, -6
 static bool     s_active      = false;
 static uint32_t s_last_tick   = 0;
 static bool s_chart_updating = false;
+static Record5Min s_day_recs[300];   // 288 registros/día + margen
+static uint32_t   s_day_count = 0;
+static HourAgg    s_hours[24];
 
-// ── Widgets ───────────────────────────────────────────────────────────────
 // ── Widgets ───────────────────────────────────────────────────────────────
 static lv_obj_t           *s_lbl_date;
 static lv_obj_t           *s_btn_prev, *s_btn_next;
@@ -130,38 +132,36 @@ static void add_y_labels(lv_obj_t* parent, int chart_y, int chart_h,
 // ── Rango del chart de potencias ──────────────────────────────────────────
 static void apply_range() {
     ChartConfig cfg = Storage.loadChartConfig();
-
     if (cfg.autoscale) {
         int32_t mn = 0, mx = 500;
         for (int h = 0; h < 24; h++) {
-            if (!s_day.hours[h].valid) continue;
-            const HourlyRecord& r = s_day.hours[h];
-            int32_t vals[] = {
-                (int32_t)r.pv_wh,
-                (int32_t)r.import_wh,
-                -(int32_t)r.export_wh,
-                (int32_t)r.batt_charge_wh - r.batt_discharge_wh,
-                (int32_t)r.load_wh,
-            };
-            for (auto v : vals) { if (v > mx) mx = v; if (v < mn) mn = v; }
+            if (!s_hours[h].valid) continue;
+            float vals[] = {s_hours[h].pv_w, s_hours[h].grid_w,
+                            s_hours[h].batt_w, s_hours[h].load_w};
+            for (float v : vals) {
+                if ((int32_t)v > mx) mx = (int32_t)v;
+                if ((int32_t)v < mn) mn = (int32_t)v;
+            }
         }
         int32_t margin = (mx - mn) / 8;
         if (margin < 200) margin = 200;
-        lv_chart_set_range(s_chart_pwr, LV_CHART_AXIS_PRIMARY_Y, mn - margin, mx + margin);
-        lv_chart_set_range(s_chart_pwr, LV_CHART_AXIS_PRIMARY_Y, mn, mx);
-
-        // Regenerar etiquetas Y con el nuevo rango
+        lv_chart_set_range(s_chart_pwr, LV_CHART_AXIS_PRIMARY_Y,
+                           mn - margin, mx + margin);
         lv_obj_clean(s_ylabels_container);
-        add_y_labels(s_ylabels_container, 0, PWR_H, (int)mn, (int)mx, 4, "k");
+        add_y_labels(s_ylabels_container, 0, PWR_H,
+                     (int)(mn - margin), (int)(mx + margin), 4, "k");
     } else {
         int32_t m = (int32_t)cfg.max_kw * 1000;
         lv_chart_set_range(s_chart_pwr, LV_CHART_AXIS_PRIMARY_Y, -m, m);
+        lv_obj_clean(s_ylabels_container);
+        add_y_labels(s_ylabels_container, 0, PWR_H, (int)-m, (int)m, 4, "k");
     }
 }
 
 // ── Rellena los charts con s_day ──────────────────────────────────────────
 static void update_charts() {
-    // Si mostramos hoy, no dibujar horas futuras
+    s_chart_updating = true;
+
     int cur_hour = 24;
     if (s_offset == 0) {
         time_t now; time(&now);
@@ -169,12 +169,10 @@ static void update_charts() {
         cur_hour = t.tm_hour;
     }
 
-    s_chart_updating = true;
     bool has_any = false;
     for (int h = 0; h < 24; h++) {
-        const HourlyRecord& r = s_day.hours[h];
-        bool valid = r.valid && (s_offset < 0 || h < cur_hour);
-
+        const HourAgg& a = s_hours[h];
+        bool valid = a.valid && (s_offset < 0 || h <= cur_hour);
         if (!valid) {
             lv_chart_set_value_by_id(s_chart_pwr, s_spv,   h, LV_CHART_POINT_NONE);
             lv_chart_set_value_by_id(s_chart_pwr, s_sgrid, h, LV_CHART_POINT_NONE);
@@ -183,11 +181,12 @@ static void update_charts() {
             lv_chart_set_value_by_id(s_chart_soc, s_ssoc,  h, LV_CHART_POINT_NONE);
         } else {
             has_any = true;
-            lv_chart_set_value_by_id(s_chart_pwr, s_spv,   h, (int32_t)r.pv_wh);
-            lv_chart_set_value_by_id(s_chart_pwr, s_sgrid, h, (int32_t)r.import_wh - r.export_wh);
-            lv_chart_set_value_by_id(s_chart_pwr, s_sbatt, h, (int32_t)r.batt_charge_wh - r.batt_discharge_wh);
-            lv_chart_set_value_by_id(s_chart_pwr, s_sload, h, (int32_t)r.load_wh);
-            lv_chart_set_value_by_id(s_chart_soc, s_ssoc,  h, (int32_t)r.soc);
+            // Valores en W (medias del periodo)
+            lv_chart_set_value_by_id(s_chart_pwr, s_spv,   h, (int32_t)a.pv_w);
+            lv_chart_set_value_by_id(s_chart_pwr, s_sgrid, h, (int32_t)a.grid_w);
+            lv_chart_set_value_by_id(s_chart_pwr, s_sbatt, h, (int32_t)a.batt_w);
+            lv_chart_set_value_by_id(s_chart_pwr, s_sload, h, (int32_t)a.load_w);
+            lv_chart_set_value_by_id(s_chart_soc, s_ssoc,  h, (int32_t)a.soc);
         }
     }
 
@@ -202,95 +201,77 @@ static void update_charts() {
 }
 
 static void load_day() {
-    // Resetear selección al cambiar de día
     s_selected_h = -1;
     if (s_popup) lv_obj_add_flag(s_popup, LV_OBJ_FLAG_HIDDEN);
     if (s_vline)  lv_obj_add_flag(s_vline,  LV_OBJ_FLAG_HIDDEN);
 
     uint32_t dep = day_epoch_from_offset(s_offset);
-    if (!Storage.getDayData(dep, s_day)) {
-        s_day = DayData{};
-        s_day.day_epoch = dep;
-    }
+    s_day_count  = Store.readDay(dep, s_day_recs, 300);
+    Store.aggregateHourly(s_day_recs, s_day_count, s_hours);
+
     update_date_label();
     update_charts();
 }
 
 // ── Popup con valores del instante clicado ────────────────────────────────
 static void show_popup(int32_t h) {
-    if (h < 0 || h >= 24 || !s_day.hours[h].valid) {
-        // Ocultar todo si la hora no tiene datos
-        if (s_popup) lv_obj_add_flag(s_popup, LV_OBJ_FLAG_HIDDEN);
-        if (s_vline)  lv_obj_add_flag(s_vline,  LV_OBJ_FLAG_HIDDEN);
+    if (h < 0 || h >= 24 || !s_hours[h].valid) {
+        lv_obj_add_flag(s_popup, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_vline, LV_OBJ_FLAG_HIDDEN);
         s_selected_h = -1;
         return;
     }
-
-    // Si se pulsa la misma hora, actúa como toggle
     if (h == s_selected_h) {
         lv_obj_add_flag(s_popup, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(s_vline,  LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_vline, LV_OBJ_FLAG_HIDDEN);
         s_selected_h = -1;
         return;
     }
     s_selected_h = h;
 
-    const HourlyRecord& r = s_day.hours[h];
-    int net_grid = (int)r.import_wh  - (int)r.export_wh;
-    int net_batt = (int)r.batt_charge_wh - (int)r.batt_discharge_wh;
+    const HourAgg& a = s_hours[h];
 
-    // ── Línea vertical ────────────────────────────────────────────────────
+    // Línea vertical
     int line_x = hour_to_screen_x((int)h);
-    // La línea cubre chart_pwr + leyenda + chart_soc
     lv_obj_set_pos(s_vline, line_x, PWR_Y);
     lv_obj_set_size(s_vline, 1, SOC_Y + SOC_H - PWR_Y);
     lv_obj_remove_flag(s_vline, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(s_vline);
 
-    // ── Contenido del popup ───────────────────────────────────────────────
-    // Fila 0: título con hora
-    // Filas 1-4: serie con cuadro color + nombre + valor
-    // Fila 5: SOC
-
     // Título
-    char title_buf[24];
-    snprintf(title_buf, sizeof(title_buf), "%02d:00 - %02d:00",
+    char title[24];
+    snprintf(title, sizeof(title), "%02d:00 – %02d:00",
              (int)h, (int)(h + 1) % 24);
-    lv_label_set_text(s_popup_title, title_buf);
+    lv_label_set_text(s_popup_title, title);
 
-    // Valores de las 4 series + SOC
-    struct Row { const char* name; lv_color_t color; int wh; bool is_signed; };
+    // Valores medios W de la hora
+    // batt_w: positivo = descargando, negativo = cargando (RAW)
+    struct Row { const char* name; float w; bool is_signed; };
     Row rows[5] = {
-        { "PV",    C_PV,   (int)r.pv_wh,  false },
-        { "Red",   C_GRID, net_grid,       true  },
-        { "Bat",   C_BATT, net_batt,       true  },
-        { "Carga", C_LOAD, (int)r.load_wh, false },
-        { "SOC",   C_SOC,  (int)r.soc,     false },
+        {"PV",    a.pv_w,   false},
+        {"Red",   a.grid_w, true },
+        {"Bat",   a.batt_w, true },
+        {"Carga", a.load_w, false},
+        {"SOC",   (float)a.soc, false},
     };
-
-    // Los hijos 1–5 son los labels de valor (creados en init)
     for (int i = 0; i < 5; i++) {
-        char buf[32];
-        if (i < 4) {   // potencias en kWh
-            if (rows[i].is_signed)
-                snprintf(buf, sizeof(buf), "%+.2f kWh", rows[i].wh / 1000.0f);
-            else
-                snprintf(buf, sizeof(buf), "%.2f kWh",  rows[i].wh / 1000.0f);
-        } else {       // SOC en %
-            snprintf(buf, sizeof(buf), "%d%%", rows[i].wh);
+        char buf[24];
+        if (i < 4) {
+            if (rows[i].is_signed) snprintf(buf,sizeof(buf),"%+.0f W", rows[i].w);
+            else                   snprintf(buf,sizeof(buf),"%.0f W",  rows[i].w);
+        } else {
+            snprintf(buf, sizeof(buf), "%d%%", (int)rows[i].w);
         }
         lv_label_set_text(s_popup_vals[i], buf);
     }
 
-    // ── Posición del popup: izquierda o derecha según espacio ─────────────
-    const int POPUP_W = 168;
-    const int POPUP_H = 112;
+    // Posición del popup
+    const int POPUP_W = 168, POPUP_H = 112;
     int px = line_x + 6;
     if (px + POPUP_W > 476) px = line_x - POPUP_W - 4;
     if (px < 2)             px = 2;
     lv_obj_set_pos(s_popup, px, PWR_Y + 4);
     lv_obj_set_size(s_popup, POPUP_W, POPUP_H);
-
     lv_obj_remove_flag(s_popup, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(s_popup);
 }
@@ -474,7 +455,7 @@ void chart_screen_init(lv_obj_t* parent) {
     lv_label_set_text(s_no_data, "Sin datos para este dia");
 
     // ── Popup de detalle ──────────────────────────────────────────────────
-// ── Línea vertical de selección ───────────────────────────────────────
+    // ── Línea vertical de selección ───────────────────────────────────────
     s_vline = lv_obj_create(parent);
     lv_obj_set_style_bg_color(s_vline, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_bg_opa(s_vline, LV_OPA_40, 0);

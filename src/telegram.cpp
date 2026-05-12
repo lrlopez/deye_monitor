@@ -4,7 +4,7 @@
 
 // Certificado raíz de api.telegram.org (DigiCert Global Root CA)
 // Válido hasta 2031 — actualizar si caduca
-static const char* TELEGRAM_CERT = R"=EOF=(
+/*static const char* TELEGRAM_CERT = R"=EOF=(
 -----BEGIN CERTIFICATE-----
 MIIDxTCCAq2gAwIBAgIBADANBgkqhkiG9w0BAQsFADCBgzELMAkGA1UEBhMCVVMx
 EDAOBgNVBAgTB0FyaXpvbmExEzARBgNVBAcTClNjb3R0c2RhbGUxGjAYBgNVBAoT
@@ -28,9 +28,10 @@ gIOrmgIttRD02JDHBHNA7XIloKmf7J6raBKZV8aPEjoJpL1E/QYVN8Gb5DKj7Tjo
 LPAvTK33sefOT6jEm0pUBsV/fdUID+Ic/n4XuKxe9tQWskMJDE32p2u0mYRlynqI
 4uJEvlz36hz1
 -----END CERTIFICATE-----
-)=EOF=";
+)=EOF=";*/
 
 static const char* API_HOST = "api.telegram.org";
+static SemaphoreHandle_t s_net_sem = nullptr;
 
 // ── Mensajes localizados ───────────────────────────────────────────────────
 static String fmt_msg(const AlertMsg& msg) {
@@ -104,7 +105,21 @@ void TelegramNotifier::task(void* pv) {
 // ── HTTP POST a la API de Telegram ────────────────────────────────────────
 bool TelegramNotifier::sendMessage(const String& text) {
     WiFiClientSecure client;
-    client.setCACert(TELEGRAM_CERT);
+
+    time_t now; time(&now);
+    if (now < 1700000000UL) {
+        Serial.println("[Telegram] NTP no sincronizado");
+        return false;
+    }
+
+    if (s_net_sem) {
+        if (xSemaphoreTake(s_net_sem, pdMS_TO_TICKS(500)) != pdTRUE) {
+            return false;
+        }
+    }
+
+    client.setInsecure();
+    //client.setCACert(TELEGRAM_CERT);
     client.setTimeout(10);
 
     HTTPClient http;
@@ -124,12 +139,15 @@ bool TelegramNotifier::sendMessage(const String& text) {
 
     int code = http.POST(body);
     bool ok  = (code == 200);
-
+    
     Serial0.println("URL: " + url);
     Serial0.println("Body: " + body);
     Serial0.printf("Response: %d\n", code);
     
     http.end();
+
+    if (s_net_sem) xSemaphoreGive(s_net_sem);
+
     return ok;
 }
 
@@ -140,7 +158,7 @@ void TelegramNotifier::begin(const char* token, const char* chat_id) {
 
     _queue = xQueueCreate(8, sizeof(AlertMsg));
     xTaskCreatePinnedToCore(task, "telegram",
-                             8192, this, 1, nullptr, 0);
+                             4 * 1024, this, 1, nullptr, 0);
     Serial0.printf("[Telegram] Iniciado. Configurado: %s\n",
                   isConfigured() ? "SI" : "NO");
 }
@@ -158,4 +176,8 @@ bool TelegramNotifier::enqueue(AlertType type, int32_t value) {
 
 bool TelegramNotifier::isConfigured() const {
     return _token[0] != '\0' && _chat_id[0] != '\0';
+}
+
+void TelegramNotifier::setNetworkSemaphore(SemaphoreHandle_t sem) {
+    s_net_sem = sem;
 }

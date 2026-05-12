@@ -1,6 +1,7 @@
+#include <time.h>
 #include "summary_screen.h"
 #include "storage.h"
-#include <time.h>
+#include "data_store.h"
 
 // ── Paleta ────────────────────────────────────────────────────────────────
 #define C_BG      lv_color_hex(0x0D1117)
@@ -38,8 +39,14 @@ struct RowDrawData {
     bool  has_data;
 };
 
+// ── Información de un día ─────────────────────────────────────────────────
+struct SummaryDay { 
+    uint32_t timestamp; 
+    float pv_kwh, export_kwh, import_kwh, load_kwh, batt_charge_kwh, batt_discharge_kwh; 
+};
+
+static SummaryDay   s_recs[7];
 static RowDrawData  s_rdd[7];
-static DailyRecord  s_recs[7];
 static int          s_offset = 0;
 static bool         s_needs_reload = false;
 static DailyStats   s_live_daily{};
@@ -83,7 +90,6 @@ static uint32_t monday_epoch(int week_offset) {
 static void load_data() {
     uint32_t mon = monday_epoch(s_offset);
 
-    // Época de medianoche de hoy para comparar
     time_t now_t; time(&now_t);
     struct tm now_tm; localtime_r(&now_t, &now_tm);
     now_tm.tm_hour = 0; now_tm.tm_min = 0;
@@ -92,41 +98,43 @@ static void load_data() {
 
     float con_max = 0.01f, pro_max = 0.01f;
 
-    // Pasada 1: cargar registros
     for (int i = 0; i < 7; i++) {
         uint32_t dep = mon + (uint32_t)i * 86400;
-        DailyRecord rec{}; rec.timestamp = dep;
+        DailyStats d{};
 
         if (dep == today_ep && s_live_valid) {
-            // Día actual: convertir DailyStats live a DailyRecord
-            rec.pv_kwh             = s_live_daily.pv_kwh;
-            rec.export_kwh         = s_live_daily.export_kwh;
-            rec.import_kwh         = s_live_daily.import_kwh;
-            rec.load_kwh           = s_live_daily.load_kwh;
-            rec.batt_charge_kwh    = s_live_daily.batt_charge_kwh;
-            rec.batt_discharge_kwh = s_live_daily.batt_discharge_kwh;
+            d = s_live_daily;
         } else {
-            Storage.getDayRecord(dep, rec);
+            Record5Min rec{};
+            if (Store.getLastOfDay(dep, rec)) d = record_to_stats(rec);
         }
 
-        s_recs[i] = rec;
-        if (rec.load_kwh > con_max) con_max = rec.load_kwh;
-        if (rec.pv_kwh   > pro_max) pro_max = rec.pv_kwh;
+        s_recs[i].timestamp          = dep;
+        s_recs[i].pv_kwh             = d.pv_kwh;
+        s_recs[i].export_kwh         = d.export_kwh;
+        s_recs[i].import_kwh         = d.import_kwh;
+        s_recs[i].load_kwh           = d.load_kwh;
+        s_recs[i].batt_charge_kwh    = d.batt_charge_kwh;
+        s_recs[i].batt_discharge_kwh = d.batt_discharge_kwh;
+
+        if (d.load_kwh > con_max) con_max = d.load_kwh;
+        if (d.pv_kwh   > pro_max) pro_max = d.pv_kwh;
     }
 
-    // Pasada 2: calcular segmentos 
     for (int i = 0; i < 7; i++) {
-        const DailyRecord& r = s_recs[i];
-        bool has = (r.pv_kwh > 0.01f || r.load_kwh > 0.01f);
-
-        float pv_direct  = r.load_kwh - r.batt_discharge_kwh - r.import_kwh;
-        if (pv_direct  < 0) pv_direct  = 0;
-        float pv_to_load = r.pv_kwh - r.export_kwh - r.batt_charge_kwh;
+        float pv_direct  = s_recs[i].load_kwh
+                         - s_recs[i].batt_discharge_kwh
+                         - s_recs[i].import_kwh;
+        if (pv_direct < 0) pv_direct = 0;
+        float pv_to_load = s_recs[i].pv_kwh
+                         - s_recs[i].export_kwh
+                         - s_recs[i].batt_charge_kwh;
         if (pv_to_load < 0) pv_to_load = 0;
 
+        bool has = (s_recs[i].pv_kwh > 0.01f || s_recs[i].load_kwh > 0.01f);
         s_rdd[i] = {
-            {pv_direct, r.batt_discharge_kwh, r.import_kwh},
-            {pv_to_load, r.batt_charge_kwh, r.export_kwh},
+            {pv_direct, s_recs[i].batt_discharge_kwh, s_recs[i].import_kwh},
+            {pv_to_load, s_recs[i].batt_charge_kwh, s_recs[i].export_kwh},
             con_max, pro_max, has
         };
     }
@@ -211,7 +219,7 @@ static void popup_close_cb(lv_event_t*) {
 static void show_popup(int idx) {
     if (idx < 0 || idx >= 7 || !s_rdd[idx].has_data) return;
 
-    const DailyRecord& r = s_recs[idx];
+    const struct SummaryDay& r = s_recs[idx];
     time_t t = (time_t)r.timestamp;
     struct tm ti; localtime_r(&t, &ti);
 

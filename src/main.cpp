@@ -2,9 +2,11 @@
 #include <WiFi.h>
 #include <lvgl.h>
 #include <time.h>
+#include <LittleFS.h>
 
 #include "config.h"
 #include "storage.h"
+#include "data_store.h"
 #include "solarman.h"
 #include "dashboard.h"
 #include "stats_screen.h"
@@ -121,8 +123,6 @@ static void solarmanTask(void* /*pv*/) {
     static int        s_last_hour = -1;
     static DailyStats s_prev_daily;   // snapshot del poll anterior
     static int        s_last_day = -1;
-    static bool          s_startup_done   = false;
-    static SessionState  s_session{};
 
     static bool     s_batt_alerted      = false;
     static bool     s_solar_on          = false;
@@ -132,6 +132,11 @@ static void solarmanTask(void* /*pv*/) {
     static uint32_t s_last_solar_alert  = 0;
     static uint32_t s_last_grid_alert   = 0;
     static uint32_t s_last_logger_alert = 0;
+
+    static uint32_t s_last_save_epoch    = 0;
+    static bool     s_startup_done       = false;
+    static bool     s_first_save_partial = false;
+    static SessionState  s_session{};
 
     for (;;) {
         if (WiFi.status() != WL_CONNECTED) {
@@ -153,106 +158,27 @@ static void solarmanTask(void* /*pv*/) {
                     g_energy_ready = true;
                     xSemaphoreGive(g_mutex);
                 }
-            }
 
+                if (!s_startup_done && local_e.valid) {
+                    s_startup_done = true;
+                    Record5Min last{};
+                    if (Store.getLastRecord(last)) {
+                        s_last_save_epoch = last.timestamp;
+                        uint32_t gap = (uint32_t)time(nullptr) - last.timestamp;
+                        if (gap > 600) {   // más de 10 minutos de gap
+                            s_first_save_partial = true;
+                            Serial.printf("[Store] Gap detectado: %lu min sin datos\n",
+                                        (unsigned long)(gap / 60));
+                        }
+                    }
+                }
+            }
             if (millis() - last_daily >= POLL_DAILY_MS) {
                 if (client.fetchDailyStats(local_d)) {
                     if (xSemaphoreTake(g_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
                         g_daily       = local_d;
                         g_daily_ready = true;
                         xSemaphoreGive(g_mutex);
-                    }
-
-                    // ── Startup: recuperar día/hora que no se registraron ─────────────────────
-                    if (!s_startup_done && local_d.valid) {
-                        s_startup_done = true;
-
-                        struct tm now_tm; getLocalTime(&now_tm, 500);
-                        struct tm mid_tm = now_tm;
-                        mid_tm.tm_hour = 0; mid_tm.tm_min = 0;
-                        mid_tm.tm_sec  = 0; mid_tm.tm_isdst = -1;
-                        uint32_t today_ep = (uint32_t)mktime(&mid_tm);
-
-                        SessionState saved{};
-                        if (Storage.loadSessionState(saved)) {
-                            // ── Recuperar día anterior no registrado ──────────────────────────
-                            if (saved.day_epoch < today_ep) {
-                                DailyRecord test{};
-                                if (!Storage.getDayRecord(saved.day_epoch, test)) {
-                                    // No había registro → guardar el último snapshot conocido
-                                    DailyRecord rec{};
-                                    rec.timestamp          = saved.day_epoch;
-                                    rec.pv_kwh             = saved.daily_snap.pv_kwh;
-                                    rec.export_kwh         = saved.daily_snap.export_kwh;
-                                    rec.import_kwh         = saved.daily_snap.import_kwh;
-                                    rec.load_kwh           = saved.daily_snap.load_kwh;
-                                    rec.batt_charge_kwh    = saved.daily_snap.batt_charge_kwh;
-                                    rec.batt_discharge_kwh = saved.daily_snap.batt_discharge_kwh;
-                                    Storage.pushDailyRecord(rec);
-                                    Serial.printf("[Startup] Dia %lu recuperado desde sesión\n",
-                                                (unsigned long)saved.day_epoch);
-                                }
-                            }
-
-                            // ── Recuperar hora perdida (mismo día) ────────────────────────────
-                            if (saved.day_epoch == today_ep &&
-                                saved.hour < (uint8_t)now_tm.tm_hour) {
-
-                                // Guardar la hora interrumpida con los datos que teníamos
-                                HourlyRecord hrec{};
-                                hrec.pv_wh             = delta_wh(saved.daily_snap.pv_kwh,
-                                                                saved.hour_snap.pv_kwh);
-                                hrec.export_wh         = delta_wh(saved.daily_snap.export_kwh,
-                                                                saved.hour_snap.export_kwh);
-                                hrec.import_wh         = delta_wh(saved.daily_snap.import_kwh,
-                                                                saved.hour_snap.import_kwh);
-                                hrec.batt_charge_wh    = delta_wh(saved.daily_snap.batt_charge_kwh,
-                                                                saved.hour_snap.batt_charge_kwh);
-                                hrec.batt_discharge_wh = delta_wh(saved.daily_snap.batt_discharge_kwh,
-                                                                saved.hour_snap.batt_discharge_kwh);
-                                hrec.load_wh           = delta_wh(saved.daily_snap.load_kwh,
-                                                                saved.hour_snap.load_kwh);
-                                hrec.soc               = (uint8_t)local_e.batt_soc;
-                                hrec.valid             = 1;
-                                Storage.saveHourlyRecord(today_ep, saved.hour, hrec);
-                                Serial.printf("[Startup] Hora %02d recuperada desde sesión\n",
-                                            saved.hour);
-
-                                // El snapshot de la hora en curso empieza desde el último dato
-                                s_hour_snap = saved.daily_snap;
-                                s_last_hour = now_tm.tm_hour;
-                            } else {
-                                // Día diferente o hora ya pasada: empezar hora desde cero
-                                s_hour_snap = local_d;
-                                s_last_hour = now_tm.tm_hour;
-                            }
-
-                            // Restaurar estado del día
-                            s_prev_daily = saved.daily_snap;
-                            s_last_day   = now_tm.tm_mday;
-
-                        } else {
-                            // Primera vez o NVS vacío: inicializar normalmente
-                            s_hour_snap  = local_d;
-                            s_last_hour  = now_tm.tm_hour;
-                            s_prev_daily = local_d;
-                            s_last_day   = now_tm.tm_mday;
-                        }
-                    }
-
-                    // ── Guardar sesión tras cada poll exitoso ─────────────────────────────────
-                    if (local_d.valid && s_startup_done) {
-                        struct tm ct; getLocalTime(&ct, 500);
-                        struct tm mt = ct;
-                        mt.tm_hour = 0; mt.tm_min = 0; mt.tm_sec = 0; mt.tm_isdst = -1;
-
-                        SessionState ss{};
-                        ss.day_epoch  = (uint32_t)mktime(&mt);
-                        ss.daily_snap = local_d;
-                        ss.hour       = (uint8_t)s_last_hour;
-                        ss.hour_snap  = s_hour_snap;
-                        ss.valid      = true;
-                        Storage.saveSessionState(ss);
                     }
                 }
                 TelegramConfig tgc = Storage.loadTelegramConfig();
@@ -322,79 +248,37 @@ static void solarmanTask(void* /*pv*/) {
                 }
 
                 end_alerts:;
-                // Muestreo horario
-                struct tm tt;
-                if (local_d.valid && getLocalTime(&tt, 500)) {
-                    int cur_day = tt.tm_mday;
+                                
+                // ── Guardar registro cada 5 minutos ──────────────────────────────────────
+                uint32_t now_ep = (uint32_t)time(nullptr);
+                if (s_startup_done && local_e.valid && local_d.valid &&
+                    now_ep - s_last_save_epoch >= 300) {
 
-                    if (s_last_day == -1) {
-                        // Primera lectura del dispositivo
-                        s_last_day   = cur_day;
-                        s_prev_daily = local_d;
-                    } else if (cur_day != s_last_day) {
-                        // El día cambió: s_prev_daily tiene los últimos valores de ayer
-                        if (s_prev_daily.valid) {
-                            // Calcular medianoche de ayer
-                            struct tm yday = tt;
-                            yday.tm_mday -= 1;
-                            yday.tm_hour = 0; yday.tm_min = 0; yday.tm_sec = 0; yday.tm_isdst = -1;
+                    Record5Min r{};
+                    r.timestamp  = now_ep;
+                    r.pv_w       = (int16_t)constrain(local_e.pv_power,  -32767, 32767);
+                    r.grid_w     = (int16_t)constrain(local_e.grid_power, -32767, 32767);
+                    r.batt_w     = (int16_t)constrain(local_e.batt_power, -32767, 32767);
+                    r.load_w     = (int16_t)constrain(local_e.load_power, -32767, 32767);
 
-                            DailyRecord rec{};
-                            rec.timestamp          = (uint32_t)mktime(&yday);
-                            rec.pv_kwh             = s_prev_daily.pv_kwh;
-                            rec.export_kwh         = s_prev_daily.export_kwh;
-                            rec.import_kwh         = s_prev_daily.import_kwh;
-                            rec.load_kwh           = s_prev_daily.load_kwh;
-                            rec.batt_charge_kwh    = s_prev_daily.batt_charge_kwh;
-                            rec.batt_discharge_kwh = s_prev_daily.batt_discharge_kwh;
+                    // Totales del día en 0.1 kWh (los registros del inversor ya vienen así)
+                    r.day_pv     = (uint16_t)(local_d.pv_kwh             * 10.0f + 0.5f);
+                    r.day_export = (uint16_t)(local_d.export_kwh          * 10.0f + 0.5f);
+                    r.day_import = (uint16_t)(local_d.import_kwh          * 10.0f + 0.5f);
+                    r.day_load   = (uint16_t)(local_d.load_kwh            * 10.0f + 0.5f);
+                    r.day_bchg   = (uint16_t)(local_d.batt_charge_kwh     * 10.0f + 0.5f);
+                    r.day_bdis   = (uint16_t)(local_d.batt_discharge_kwh  * 10.0f + 0.5f);
+                    r.soc        = (uint8_t)local_e.batt_soc;
+                    r.flags      = 0x01;   // válido
+                    if (s_first_save_partial) { r.flags |= 0x02; s_first_save_partial = false; }
+                    r.extra[0] = r.extra[1] = 0;
 
-                            Storage.pushDailyRecord(rec);
-                            Serial0.printf("[Daily] Dia guardado: PV:%.2f Exp:%.2f Imp:%.2f "
-                                        "Load:%.2f BatC:%.2f BatD:%.2f kWh\n",
-                                        rec.pv_kwh, rec.export_kwh, rec.import_kwh,
-                                        rec.load_kwh, rec.batt_charge_kwh, rec.batt_discharge_kwh);
-                        }
-                        s_last_day = cur_day;
-                    }
-                    s_prev_daily = local_d;   // actualizar siempre
-                }
-                if (getLocalTime(&tt, 500)) {
-                    int cur = tt.tm_hour;
-                    if (s_last_hour == -1) {
-                        // Primera lectura: tomar snapshot
-                        s_hour_snap = local_d;
-                        s_last_hour = cur;
-                    } else if (cur != s_last_hour && local_d.valid) {
-                        // La hora ha cambiado: construir y guardar registro
-                        HourlyRecord rec{};
-                        rec.pv_wh             = delta_wh(local_d.pv_kwh,             s_hour_snap.pv_kwh);
-                        rec.export_wh         = delta_wh(local_d.export_kwh,         s_hour_snap.export_kwh);
-                        rec.import_wh         = delta_wh(local_d.import_kwh,         s_hour_snap.import_kwh);
-                        rec.batt_charge_wh    = delta_wh(local_d.batt_charge_kwh,    s_hour_snap.batt_charge_kwh);
-                        rec.batt_discharge_wh = delta_wh(local_d.batt_discharge_kwh, s_hour_snap.batt_discharge_kwh);
-                        rec.load_wh           = delta_wh(local_d.load_kwh,           s_hour_snap.load_kwh);
-                        rec.soc               = (uint8_t)local_e.batt_soc;
-                        rec.valid             = 1;
+                    Store.push(r);
+                    s_last_save_epoch = now_ep;
 
-                        // Medianoche local del día en curso (que es s_last_hour, no cur)
-                        struct tm mid = tt;
-                        mid.tm_hour = 0; mid.tm_min = 0; mid.tm_sec = 0; mid.tm_isdst = -1;
-                        // Si la hora que termina es 23 y ahora es 0, ya estamos en otro día:
-                        // mktime con el tm actual y hora 0 ya da la medianoche correcta
-                        uint32_t day_ep = (uint32_t)mktime(&mid);
-                        if (s_last_hour == 23 && cur == 0)
-                            day_ep -= 86400;   // la hora 23 pertenece al día anterior
-
-                        Storage.saveHourlyRecord(day_ep, (uint8_t)s_last_hour, rec);
-                        Serial0.printf("[Hourly] %02d:00 PV:%dWh Grid:%+dWh Bat:%+dWh Load:%dWh SOC:%d%%\n",
-                            s_last_hour,
-                            rec.pv_wh, (int)rec.import_wh - rec.export_wh,
-                            (int)rec.batt_charge_wh - rec.batt_discharge_wh,
-                            rec.load_wh, rec.soc);
-
-                        s_hour_snap = local_d;
-                        s_last_hour = cur;
-                    }
+                    // Sesión: guardar epoch para detección de gaps en el próximo arranque
+                    SessionState ss{now_ep, true};
+                    Storage.saveSessionState(ss);
                 }
                 last_daily = millis();
             }
@@ -447,6 +331,9 @@ void setup() {
     // NVS → config en RAM
     Storage.loadConfig(g_cfg);
 
+    // LittleFS + DataStore
+    Store.begin();
+    
     // WiFi con valores de NVS
     WiFi.begin(g_cfg.wifi_ssid, g_cfg.wifi_pass);
     Serial0.print("[WiFi] Conectando");
@@ -454,10 +341,12 @@ void setup() {
     while (WiFi.status() != WL_CONNECTED && millis() - t0 < 20000) {
         delay(500); Serial0.print('.');
     }
-    if (WiFi.status() == WL_CONNECTED)
-        Serial0.printf("\n[WiFi] IP: %s\n", WiFi.localIP().toString().c_str());
-    else
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial0.printf("\n[WiFi] IP: ");
+        Serial0.println(WiFi.localIP().toString());
+    } else {
         Serial0.println("\n[WiFi] Sin conexion – se reintentará en la tarea");
+    }
 
     // NTP
     configTime(0, 0, "es.pool.ntp.org", "time.cloudflare.com");
@@ -470,9 +359,7 @@ void setup() {
 
     // Telegram
     TelegramConfig tgcfg = Storage.loadTelegramConfig();
-    Serial0.print("[Telegram] Init...");
     Telegram.begin(tgcfg.token, tgcfg.chat_id);
-    Serial0.println(" OK");
 
     // ── Tileview: 4 pantallas horizontales ───────────────────────────────
     lv_obj_t* tv = lv_tileview_create(lv_scr_act());

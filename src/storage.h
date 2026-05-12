@@ -11,46 +11,12 @@ struct AppConfig {
     uint32_t logger_serial;
 };
 
-// ── Entrada de histórico diario (para gráficas futuras) ──────────────────
-// Tamaño fijo → permite buffer circular en NVS sin fragmentación
-struct DailyRecord {
-    uint32_t timestamp;        // epoch UTC del día (00:00:00)
-    float    pv_kwh;
-    float    export_kwh;
-    float    import_kwh;
-    float    load_kwh;
-    float    batt_charge_kwh;
-    float    batt_discharge_kwh;
-};
-
-// ── Registro horario ──────────────────────────────────────────────────────
-// Valores en Wh (deltas del periodo). int16_t → max 32767 Wh/h, suficiente para 6 kW.
-struct HourlyRecord {
-    int16_t pv_wh;
-    int16_t export_wh;
-    int16_t import_wh;
-    int16_t batt_charge_wh;
-    int16_t batt_discharge_wh;
-    int16_t load_wh;
-    uint8_t soc;      // % al final del periodo
-    uint8_t valid;    // 0 = sin dato
-};  // 14 bytes
-
-// Un día completo = 24 registros horarios
-struct DayData {
-    uint32_t     day_epoch;   // medianoche local (epoch)
-    HourlyRecord hours[24];
-};  // 4 + 24×14 = 340 bytes — 7 días = 2380 bytes en NVS
-
 // ── Estado de sesión persistido en NVS ───────────────────────────────────
 // Se guarda tras cada poll exitoso. Al arrancar, permite recuperar
 // el día y la hora que no se registraron si el ESP32 estaba apagado.
 struct SessionState {
-    uint32_t   day_epoch;    // medianoche del último día activo
-    DailyStats daily_snap;   // último snapshot de totales diarios
-    uint8_t    hour;         // última hora procesada
-    DailyStats hour_snap;    // snapshot al inicio de esa hora
-    bool       valid;
+    uint32_t last_record_epoch;
+    bool     valid;
 };
 
 // ── Config de la gráfica ──────────────────────────────────────────────────
@@ -85,31 +51,19 @@ public:
     // ── Histórico diario ──────────────────────────────────────────────────
     // Añade o sobreescribe el registro del día indicado por timestamp.
     // Uso futuro desde la tarea de red al finalizar cada día.
-    void           pushDailyRecord(const DailyRecord& rec);
-    uint8_t        getDailyHistory(DailyRecord* out, uint8_t maxCount);
-    void           clearDailyHistory();
-    void           saveHourlyRecord(uint32_t day_epoch, uint8_t hour, const HourlyRecord& rec);
-    bool           getDayData(uint32_t day_epoch, DayData& out);
     void           saveChartConfig(const ChartConfig& cfg);
     ChartConfig    loadChartConfig();
-    bool           getDayRecord(uint32_t day_epoch, DailyRecord& out);
-    void           saveSessionState(const SessionState& s);
-    bool           loadSessionState(SessionState& s);
+
+    // ── Configuración Telegram ────────────────────────────────────────────
     void           saveTelegramConfig(const TelegramConfig& cfg);
     TelegramConfig loadTelegramConfig();
+
+    // ── Estado de la sesión ───────────────────────────────────────────────
+    void        saveSessionState(const SessionState& s);
+    bool        loadSessionState(SessionState& s);
+    
 private:
     StorageManager() = default;
-
-    // Cabecera del buffer circular en namespace "hist_d"
-    struct HistMeta {
-        uint8_t head;   // índice del registro más antiguo
-        uint8_t count;  // cuántos registros válidos hay
-    };
-
-    void        readMeta(HistMeta& m);
-    void        writeMeta(const HistMeta& m);
-    DailyRecord readRecord(uint8_t idx);
-    void        writeRecord(uint8_t idx, const DailyRecord& r);
 };
 
 // Acceso global

@@ -1,8 +1,9 @@
-#include "web_server.h"
 #include <WebServer.h>
 #include <Update.h>
 #include <WiFi.h>
 #include <time.h>
+#include "web_server.h"
+#include "data_store.h"
 
 static WebServer          server(80);
 static SemaphoreHandle_t  s_mutex   = nullptr;
@@ -246,8 +247,8 @@ async function refresh() {
     document.getElementById('grid-sub').textContent = gridTxt;
 
     const battCol = l.batt_w >= 0 ? '#2ecc71' : '#e74c3c';
-    const battTxt = l.batt_w > 0  ? 'Descargando'
-                  : l.batt_w < 0  ? 'Cargando' : 'En reposo';
+    const battTxt = l.batt_w < 0  ? 'Cargando'
+                  : l.batt_w > 0  ? 'Descargando' : 'En reposo';
     document.getElementById('batt-soc').textContent = l.batt_soc + '%';
     const bar = document.getElementById('batt-bar');
     bar.style.width      = l.batt_soc + '%';
@@ -457,6 +458,181 @@ static void handle_api_data() {
     server.send(200, "application/json", json);
 }
 
+// ── Helper: epoch desde string YYYYMMDD ───────────────────────────────────
+static uint32_t parse_date(const String& s) {
+    if (s.length() != 8) return 0;
+    struct tm tm{};
+    tm.tm_year = s.substring(0,4).toInt() - 1900;
+    tm.tm_mon  = s.substring(4,6).toInt() - 1;
+    tm.tm_mday = s.substring(6,8).toInt();
+    tm.tm_isdst = -1;
+    return (uint32_t)mktime(&tm);
+}
+
+static String epoch_to_date(uint32_t ep) {
+    time_t t = (time_t)ep;
+    struct tm tm; localtime_r(&t, &tm);
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%04d-%02d-%02d",
+             tm.tm_year+1900, tm.tm_mon+1, tm.tm_mday);
+    return String(buf);
+}
+
+// ── GET /api/status ───────────────────────────────────────────────────────
+static void handle_status() {
+    Record5Min first{}, last{};
+    bool has_first = false, has_last = false;
+    has_last = Store.getLastRecord(last);
+
+    char json[256];
+    snprintf(json, sizeof(json),
+        "{\"records\":%lu,\"capacity\":%lu,\"days_stored\":%lu,"
+        "\"oldest\":\"%s\",\"newest\":\"%s\","
+        "\"wifi_rssi\":%d,\"ip\":\"%s\"}",
+        (unsigned long)Store.getCount(),
+        (unsigned long)Store.getCapacity(),
+        (unsigned long)Store.getDaysStored(),
+        has_last ? epoch_to_date(last.timestamp - 
+            (Store.getCount()-1)*300).c_str() : "N/A",
+        has_last ? epoch_to_date(last.timestamp).c_str() : "N/A",
+        (int)WiFi.RSSI(),
+        WiFi.localIP().toString().c_str());
+
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(200, "application/json", json);
+}
+
+// ── GET /api/history ──────────────────────────────────────────────────────
+static void handle_history() {
+    String date_s  = server.arg("date");
+    String from_s  = server.arg("from");
+    String to_s    = server.arg("to");
+    String gran    = server.arg("granularity");
+    if (gran == "") gran = "hourly";
+
+    // ── Rango de fechas (para granularity=daily) ──────────────────────────
+    if (gran == "daily" && from_s.length() == 8 && to_s.length() == 8) {
+        uint32_t from_ep = parse_date(from_s);
+        uint32_t to_ep   = parse_date(to_s);
+        if (!from_ep || !to_ep || to_ep < from_ep) {
+            server.send(400, "application/json", "{\"error\":\"bad range\"}");
+            return;
+        }
+
+        server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+        server.sendHeader("Content-Type", "application/json");
+        server.sendHeader("Access-Control-Allow-Origin", "*");
+        server.send(200);
+        server.sendContent("{\"from\":\"" + from_s + "\",\"to\":\"" + to_s +
+                            "\",\"granularity\":\"daily\",\"records\":[");
+
+        bool first = true;
+        for (uint32_t d = from_ep; d <= to_ep; d += 86400) {
+            Record5Min rec{};
+            if (!Store.getLastOfDay(d, rec)) continue;
+            DailyStats ds = record_to_stats(rec);
+            char buf[256];
+            snprintf(buf, sizeof(buf),
+                "%s{\"date\":\"%s\","
+                "\"pv\":%.2f,\"export\":%.2f,\"import\":%.2f,"
+                "\"load\":%.2f,\"bchg\":%.2f,\"bdis\":%.2f}",
+                first ? "" : ",",
+                epoch_to_date(d).c_str(),
+                ds.pv_kwh, ds.export_kwh, ds.import_kwh,
+                ds.load_kwh, ds.batt_charge_kwh, ds.batt_discharge_kwh);
+            server.sendContent(buf);
+            first = false;
+        }
+        server.sendContent("]}");
+        return;
+    }
+
+    // ── Día concreto ──────────────────────────────────────────────────────
+    uint32_t dep = 0;
+    if (date_s.length() == 8) {
+        dep = parse_date(date_s);
+    } else {
+        // Por defecto: hoy
+        time_t now; time(&now);
+        struct tm tm; localtime_r(&now, &tm);
+        tm.tm_hour = 0; tm.tm_min = 0; tm.tm_sec = 0; tm.tm_isdst = -1;
+        dep = (uint32_t)mktime(&tm);
+        date_s = epoch_to_date(dep);
+        date_s.replace("-", "");
+    }
+    if (!dep) { server.send(400, "application/json", "{\"error\":\"bad date\"}"); return; }
+
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server.sendHeader("Content-Type", "application/json");
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(200);
+
+    if (gran == "5min") {
+        // ── 5 min: streaming para no agotar RAM ───────────────────────────
+        static Record5Min day_buf[300];
+        uint32_t n = Store.readDay(dep, day_buf, 300);
+
+        server.sendContent("{\"date\":\"" + epoch_to_date(dep) +
+                            "\",\"granularity\":\"5min\",\"records\":[");
+        for (uint32_t i = 0; i < n; i++) {
+            const Record5Min& r = day_buf[i];
+            char buf[160];
+            snprintf(buf, sizeof(buf),
+                "%s{\"t\":%lu,\"pv_w\":%d,\"grid_w\":%d,"
+                "\"batt_w\":%d,\"load_w\":%d,\"soc\":%d,"
+                "\"day_pv\":%.1f,\"day_exp\":%.1f,\"day_imp\":%.1f,"
+                "\"day_load\":%.1f,\"day_bchg\":%.1f,\"day_bdis\":%.1f,"
+                "\"flags\":%d}",
+                i>0 ? "," : "",
+                (unsigned long)r.timestamp,
+                r.pv_w, r.grid_w, r.batt_w, r.load_w, r.soc,
+                r.day_pv/10.0f, r.day_export/10.0f, r.day_import/10.0f,
+                r.day_load/10.0f, r.day_bchg/10.0f, r.day_bdis/10.0f,
+                r.flags);
+            server.sendContent(buf);
+        }
+        server.sendContent("]}");
+
+    } else {
+        // ── hourly (default) ──────────────────────────────────────────────
+        static Record5Min day_buf[300];
+        uint32_t n = Store.readDay(dep, day_buf, 300);
+        HourAgg hours[24];
+        Store.aggregateHourly(day_buf, n, hours);
+
+        // Totales del día: último registro
+        Record5Min last_rec{};
+        DailyStats daily{};
+        if (Store.getLastOfDay(dep, last_rec)) daily = record_to_stats(last_rec);
+
+        char hdr[128];
+        snprintf(hdr, sizeof(hdr),
+            "{\"date\":\"%s\",\"granularity\":\"hourly\","
+            "\"daily\":{\"pv\":%.2f,\"exp\":%.2f,\"imp\":%.2f,"
+            "\"load\":%.2f,\"bchg\":%.2f,\"bdis\":%.2f},"
+            "\"records\":[",
+            epoch_to_date(dep).c_str(),
+            daily.pv_kwh, daily.export_kwh, daily.import_kwh,
+            daily.load_kwh, daily.batt_charge_kwh, daily.batt_discharge_kwh);
+        server.sendContent(hdr);
+
+        bool first = true;
+        for (int h = 0; h < 24; h++) {
+            if (!hours[h].valid) continue;
+            char buf[160];
+            snprintf(buf, sizeof(buf),
+                "%s{\"h\":%d,\"pv_w\":%.0f,\"grid_w\":%.0f,"
+                "\"batt_w\":%.0f,\"load_w\":%.0f,\"soc\":%d}",
+                first ? "" : ",",
+                h, hours[h].pv_w, hours[h].grid_w,
+                hours[h].batt_w, hours[h].load_w, hours[h].soc);
+            server.sendContent(buf);
+            first = false;
+        }
+        server.sendContent("]}");
+    }
+}
+
 // ═════════════════════════════════════════════════════════════════════════
 // Tarea FreeRTOS
 // ═════════════════════════════════════════════════════════════════════════
@@ -472,6 +648,8 @@ void webserver_begin() {
     server.on("/update",   HTTP_GET,  handle_update_get);
     server.on("/api/data", HTTP_GET,  handle_api_data);
     server.on("/update",   HTTP_POST, handle_update_post, handle_upload);
+    server.on("/api/history", HTTP_GET, handle_history);
+    server.on("/api/status",  HTTP_GET, handle_status);
     server.onNotFound([]() {
         server.send(404, "text/plain", "Not found");
     });

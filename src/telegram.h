@@ -39,6 +39,9 @@ public:
     // Comprobar si las notificaciones están configuradas
     bool isConfigured() const;
 
+    // Establecer semáforo para no coincidir con el polling
+    void setNetworkSemaphore(SemaphoreHandle_t sem);
+
 private:
     TelegramNotifier() = default;
 

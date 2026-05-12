@@ -167,20 +167,22 @@ void dashboard_update(const EnergyData& d) {
     }
 
     // Batería
-    lv_color_t batt_color = (d.batt_power >= 0) ? C_BATT_OK : C_BATT_DIS;
+    lv_color_t batt_color = (d.batt_power <= 0) ? C_BATT_OK : C_BATT_DIS;
     lv_obj_set_style_bg_color(bar_batt, batt_color, LV_PART_INDICATOR);
     lv_bar_set_value(bar_batt, (int32_t)d.batt_soc, LV_ANIM_ON);
     lv_label_set_text_fmt(lbl_batt_soc, "%d%%", (int)d.batt_soc);
-    if (d.batt_power > 0) {
-        lv_label_set_text_fmt(lbl_batt_pwr, "+%d W", (int)d.batt_power);
-        lv_label_set_text(lbl_batt_sub, "Descargando");
-    } else if (d.batt_power < 0) {
+
+    if (d.batt_power < 0) {                                    // negativo = cargando
         lv_label_set_text_fmt(lbl_batt_pwr, "%d W", (int)d.batt_power);
         lv_label_set_text(lbl_batt_sub, "Cargando");
+    } else if (d.batt_power > 0) {                             // positivo = descargando
+        lv_label_set_text_fmt(lbl_batt_pwr, "+%d W", (int)d.batt_power);
+        lv_label_set_text(lbl_batt_sub, "Descargando");
     } else {
         lv_label_set_text(lbl_batt_pwr, "0 W");
         lv_label_set_text(lbl_batt_sub, "En reposo");
     }
+
 
     // Carga
     lv_label_set_text_fmt(lbl_load_val, "%d W", (int)d.load_power);

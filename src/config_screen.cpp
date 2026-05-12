@@ -136,7 +136,7 @@ static lv_obj_t* make_info_row(lv_obj_t* parent, int y, const char* key) {
 static const char* rssi_icon(int rssi) {
     if (rssi >= -55) return LV_SYMBOL_WIFI;          // 3 barras
     if (rssi >= -70) return LV_SYMBOL_WIFI;          // LVGL no tiene iconos parciales
-    return LV_SYMBOL_WIFI;                            // usamos color para diferenciar
+    return LV_SYMBOL_WIFI;                           // usamos color para diferenciar
 }
 
 static lv_color_t rssi_color(int rssi) {
@@ -504,7 +504,7 @@ void config_screen_init(lv_obj_t* parent) {
     // Chat ID
     make_row_label(sec_tg, 62, "Chat ID");
     lv_obj_t* ta_chatid = make_field(sec_tg, LBL_W, 62,
-                                      SECTION_W - LBL_W - SEC_PAD, false, "-100123456789");
+                                      FIELD_W + SCAN_BTN_W + 4, false, "-100123456789");
     lv_textarea_set_text(ta_chatid, tgcfg.chat_id);
     lv_obj_add_event_cb(ta_chatid, ta_event_cb, LV_EVENT_FOCUSED,   nullptr);
     lv_obj_add_event_cb(ta_chatid, ta_event_cb, LV_EVENT_DEFOCUSED, nullptr);

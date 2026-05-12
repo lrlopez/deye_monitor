@@ -1,6 +1,7 @@
+#include <time.h>
 #include "stats_screen.h"
 #include "storage.h"
-#include <time.h>
+#include "data_store.h"
 
 // ── Paleta ────────────────────────────────────────────────────────────────
 #define C_BG    lv_color_hex(0x0D1117)
@@ -196,21 +197,24 @@ static void load_and_render(int offset) {
     update_nav_label();
 
     if (offset == 0) {
+        // Día actual: usar datos live
         if (s_live.valid)
             render_stats(s_live.pv_kwh, s_live.export_kwh, s_live.import_kwh,
-                         s_live.load_kwh, s_live.batt_charge_kwh, s_live.batt_discharge_kwh);
+                         s_live.load_kwh, s_live.batt_charge_kwh,
+                         s_live.batt_discharge_kwh);
         else
             lv_obj_remove_flag(s_no_data, LV_OBJ_FLAG_HIDDEN);
         return;
     }
 
+    // Días anteriores: último registro del día en DataStore
     uint32_t dep = day_epoch_from_offset(offset);
-    DailyRecord rec{};
-    if (Storage.getDayRecord(dep, rec)) {
-        render_stats(rec.pv_kwh, rec.export_kwh, rec.import_kwh,
-                     rec.load_kwh, rec.batt_charge_kwh, rec.batt_discharge_kwh);
+    Record5Min rec{};
+    if (Store.getLastOfDay(dep, rec)) {
+        DailyStats d = record_to_stats(rec);
+        render_stats(d.pv_kwh, d.export_kwh, d.import_kwh,
+                     d.load_kwh, d.batt_charge_kwh, d.batt_discharge_kwh);
     } else {
-        // Limpiar donuts y mostrar "Sin datos"
         for (int i = 0; i < 3; i++) {
             lv_arc_set_angles(con_arcs[i], 270, 270);
             lv_arc_set_angles(pro_arcs[i], 270, 270);
