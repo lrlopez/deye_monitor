@@ -4,6 +4,7 @@
 #include "data_store.h"
 #include "config.h"
 #include "ui_constants.h"
+#include "psram_cache.h"
 
 // ── Paleta ────────────────────────────────────────────────────────────────
 #define C_BG    lv_color_hex(0x0D1117)
@@ -201,7 +202,7 @@ static void load_and_render(int offset) {
     // Días anteriores: último registro del día en DataStore
     uint32_t dep = day_epoch_from_offset(offset);
     Record5Min rec{};
-    if (Store.getLastOfDay(dep, rec)) {
+    if (Cache.getLastOfDay(dep, rec)) {
         DailyStats d = record_to_stats(rec);
         render_stats(d.pv_kwh, d.export_kwh, d.import_kwh,
                      d.load_kwh, d.batt_charge_kwh, d.batt_discharge_kwh);

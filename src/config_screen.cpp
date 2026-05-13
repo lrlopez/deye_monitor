@@ -365,9 +365,9 @@ void config_screen_init(lv_obj_t* parent) {
     const int SEC_CHART_Y  = SEC_INV_Y  + SEC_INV_H   + SY(4);
     const int SEC_CHART_H  = CFG_FIELD_H + SS(16) + CFG_SEC_PAD*2 + SY(30);
     const int SEC_NET_Y    = SEC_CHART_Y + SEC_CHART_H + SY(4);
-    const int SEC_NET_H    = CFG_FIELD_H + SY(20);
+    const int SEC_NET_H    = CFG_FIELD_H + SY(20) + SY(20);
     const int SEC_TG_Y     = SEC_NET_Y   + SEC_NET_H   + SY(4);
-    const int SEC_TG_H     = CFG_FIELD_H*2 + SS(16) + CFG_SEC_PAD*2 + SY(50);
+    const int SEC_TG_H     = CFG_FIELD_H*2 + SS(16) + CFG_SEC_PAD*2 + SY(50) + SY(20);
     const int BTN_Y        = SEC_TG_Y   + SEC_TG_H    + SY(8);
 
     

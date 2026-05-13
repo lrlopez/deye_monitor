@@ -15,6 +15,7 @@
 #include "config_screen.h"
 #include "web_server.h"
 #include "telegram.h"
+#include "psram_cache.h"
 
 /* Change to your screen resolution */
 static uint32_t screenWidth = 480;
@@ -274,6 +275,7 @@ static void solarmanTask(void* /*pv*/) {
                     r.extra[0] = r.extra[1] = 0;
 
                     Store.push(r);
+                    Cache.push(r);
                     s_last_save_epoch = now_ep;
 
                     // Sesión: guardar epoch para detección de gaps en el próximo arranque
@@ -331,9 +333,20 @@ void setup() {
     // NVS → config en RAM
     Storage.loadConfig(g_cfg);
 
-    // LittleFS + DataStore
+    // LittleFS + DataStore + Caché
     Store.begin();
     
+    // PSRAM disponible
+    Serial.printf("[Setup] PSRAM total: %lu KB, libre: %lu KB\n",
+                  (unsigned long)ESP.getPsramSize()  / 1024,
+                  (unsigned long)ESP.getFreePsram()  / 1024);
+    print_mem_stats("antes de cache");
+
+    // Cache PSRAM (carga los últimos 7 días desde LittleFS)
+    Cache.begin();
+
+    print_mem_stats("después de cache");
+
     // WiFi con valores de NVS
     WiFi.begin(g_cfg.wifi_ssid, g_cfg.wifi_pass);
     Serial0.print("[WiFi] Conectando");

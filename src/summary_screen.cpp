@@ -4,6 +4,7 @@
 #include "data_store.h"
 #include "ui_constants.h"
 #include "config.h"
+#include "psram_cache.h"
 
 // ── Paleta ────────────────────────────────────────────────────────────────
 #define C_BG      lv_color_hex(0x0D1117)
@@ -97,7 +98,7 @@ static void load_data() {
             d = s_live_daily;
         } else {
             Record5Min rec{};
-            if (Store.getLastOfDay(dep, rec)) d = record_to_stats(rec);
+            if (Cache.getLastOfDay(dep, rec)) d = record_to_stats(rec);
         }
 
         s_recs[i].timestamp          = dep;

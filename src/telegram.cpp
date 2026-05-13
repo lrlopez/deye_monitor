@@ -158,7 +158,7 @@ void TelegramNotifier::begin(const char* token, const char* chat_id) {
 
     _queue = xQueueCreate(8, sizeof(AlertMsg));
     xTaskCreatePinnedToCore(task, "telegram",
-                             4 * 1024, this, 1, nullptr, 0);
+                             8 * 1024, this, 1, nullptr, 0);
     Serial0.printf("[Telegram] Iniciado. Configurado: %s\n",
                   isConfigured() ? "SI" : "NO");
 }

@@ -4,6 +4,7 @@
 #include "storage.h"
 #include "ui_constants.h"
 #include "config.h"
+#include "psram_cache.h"
 
 // ── Paleta ────────────────────────────────────────────────────────────────
 #define C_BG    lv_color_hex(0x0D1117)
@@ -23,9 +24,11 @@ static int      s_offset      = 0;    // 0=hoy, -1=ayer, …, -6
 static bool     s_active      = false;
 static uint32_t s_last_tick   = 0;
 static bool s_chart_updating = false;
-static Record5Min s_day_recs[300];   // 288 registros/día + margen
-static uint32_t   s_day_count = 0;
-static HourAgg    s_hours[24];
+
+// s_day_recs ya no existe: leemos directo desde la cache PSRAM
+// s_hours también viene de la cache
+static HourAgg  s_hours[24];   // copia local para acceso sin mutex
+static uint32_t s_day_epoch_loaded = 0;
 
 // ── Widgets ───────────────────────────────────────────────────────────────
 static lv_obj_t           *s_lbl_date;
@@ -192,8 +195,13 @@ static void load_day() {
     if (s_vline)  lv_obj_add_flag(s_vline,  LV_OBJ_FLAG_HIDDEN);
 
     uint32_t dep = day_epoch_from_offset(s_offset);
-    s_day_count  = Store.readDay(dep, s_day_recs, 300);
-    Store.aggregateHourly(s_day_recs, s_day_count, s_hours);
+    s_day_epoch_loaded = dep;
+
+    // Leer agregación horaria desde cache PSRAM (pre-calculada)
+    // Si no está en cache, la carga automáticamente desde LittleFS
+    if (!Cache.getHourAgg(dep, s_hours)) {
+        memset(s_hours, 0, sizeof(s_hours));
+    }
 
     update_date_label();
     update_charts();
@@ -413,7 +421,7 @@ void chart_screen_init(lv_obj_t* parent) {
     lv_obj_set_pos(u, SCREEN_WIDTH - SX(90), LEG_Y + SY(1));
     lv_obj_set_style_text_color(u, C_MUTED, 0);
     lv_obj_set_style_text_font(u, &FONT_SMALL, 0);
-    lv_label_set_text(u, "W · %");
+    lv_label_set_text(u, "W | %");
 
     // ── Chart SOC ─────────────────────────────────────────────────────────
     s_chart_soc = make_chart(parent, SOC_Y, SOC_H, 0, 100, 2);
