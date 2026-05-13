@@ -99,7 +99,7 @@ static void add_y_labels(lv_obj_t* parent, int chart_y, int chart_h,
         // posición Y en pantalla: top = y_hi, bottom = y_lo
         int py = chart_y + CH_PAD_TV
                + (int)((float)(steps - i) / steps * (chart_h - 2 * CH_PAD_TV))
-               - 6;   // -6 para centrar el label de 12px
+               - FONT_SMALL_SIZE / 2;
 
         char buf[12];
         // Para potencias (unidad "k"): mostrar como entero de kW
@@ -266,6 +266,8 @@ static void show_popup(int32_t h) {
     if (px < SX(2)) px = SX(2);
     lv_obj_set_pos(s_popup, px, PWR_Y + SY(4));
     lv_obj_set_size(s_popup, POPUP_CHART_W, POPUP_CHART_H);
+    lv_obj_remove_flag(s_popup, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(s_popup);
 }
 
 // ── Callbacks ─────────────────────────────────────────────────────────────
@@ -275,24 +277,14 @@ static void next_cb(lv_event_t*) { if (s_offset <  0) { s_offset++; load_day(); 
 static void chart_click_cb(lv_event_t* e) {
     if (s_chart_updating) return;
 
-    // Verificar que hay un toque real activo
     lv_indev_t* indev = lv_indev_get_act();
-    if (!indev) return;   // evento disparado por refresco de datos, ignorar
+    if (!indev) return;
+    if (lv_indev_get_state(indev) != LV_INDEV_STATE_PRESSED) return;
 
-    // Verificar además que el indev tiene estado PRESSED
-    // (descarta eventos residuales tras soltar)
-    lv_indev_state_t state = lv_indev_get_state(indev);
-    if (state != LV_INDEV_STATE_PRESSED) return;
-
-    // Detectar qué chart fue pulsado y obtener el índice correspondiente
+    // lv_chart_get_pressed_point necesita el chart correcto
     lv_obj_t* target = (lv_obj_t*)lv_event_get_target(e);
-    uint32_t idx;
-
-    if (target == s_chart_pwr) {
-        idx = lv_chart_get_pressed_point(s_chart_pwr);
-    } else {
-        idx = lv_chart_get_pressed_point(s_chart_soc);
-    }
+    lv_obj_t* chart  = (target == s_chart_soc) ? s_chart_soc : s_chart_pwr;
+    uint32_t  idx    = lv_chart_get_pressed_point(chart);
 
     if (idx == LV_CHART_POINT_NONE) return;
     show_popup((int32_t)idx);
@@ -391,10 +383,13 @@ void chart_screen_init(lv_obj_t* parent) {
     lv_obj_set_size(s_ylabels_container, CH_PAD_L, PWR_H);
     lv_obj_set_style_bg_opa(s_ylabels_container, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(s_ylabels_container, 0, 0);
+    lv_obj_set_style_pad_all(s_ylabels_container, 0, 0);         
+    lv_obj_set_style_clip_corner(s_ylabels_container, false, 0); 
     lv_obj_set_scrollbar_mode(s_ylabels_container, LV_SCROLLBAR_MODE_OFF);
     lv_obj_remove_flag(s_ylabels_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_ylabels_container, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
     add_y_labels(s_ylabels_container, 0, PWR_H, -6000, 6000, 4, YAXIS_UNIT_PWR);
-
+ 
     s_sload = lv_chart_add_series(s_chart_pwr, C_LOAD, LV_CHART_AXIS_PRIMARY_Y);
     s_sbatt = lv_chart_add_series(s_chart_pwr, C_BATT, LV_CHART_AXIS_PRIMARY_Y);
     s_sgrid = lv_chart_add_series(s_chart_pwr, C_GRID, LV_CHART_AXIS_PRIMARY_Y);

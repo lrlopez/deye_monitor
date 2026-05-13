@@ -96,7 +96,7 @@
 
 // Popup de chart_screen
 #define POPUP_CHART_W     SX(168)
-#define POPUP_CHART_H     (FONT_SMALL_SIZE*6 + POPUP_PAD*2 + SY(20))
+#define POPUP_CHART_H     (FONT_SMALL_SIZE*6 + POPUP_PAD*2 + SY(30))
 
 // Popup de stats_screen y summary_screen
 #define POPUP_STATS_W     SX(220)

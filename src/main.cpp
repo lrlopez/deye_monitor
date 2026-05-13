@@ -10,7 +10,6 @@
 #include "solarman.h"
 #include "dashboard.h"
 #include "stats_screen.h"
-#include "summary_screen.h"
 #include "chart_screen.h"
 #include "config_screen.h"
 #include "web_server.h"
@@ -383,13 +382,11 @@ void setup() {
 
     lv_obj_t* tile_dash    = lv_tileview_add_tile(tv, 0, 0, LV_DIR_RIGHT);
     g_tile_stats           = lv_tileview_add_tile(tv, 1, 0, LV_DIR_HOR);
-    g_tile_summary         = lv_tileview_add_tile(tv, 2, 0, LV_DIR_HOR);
-    g_tile_chart           = lv_tileview_add_tile(tv, 3, 0, LV_DIR_HOR);
-    lv_obj_t* tile_config  = lv_tileview_add_tile(tv, 4, 0, LV_DIR_LEFT);
+    g_tile_chart           = lv_tileview_add_tile(tv, 2, 0, LV_DIR_HOR);
+    lv_obj_t* tile_config  = lv_tileview_add_tile(tv, 3, 0, LV_DIR_LEFT);
 
     dashboard_init(tile_dash);
     stats_screen_init(g_tile_stats);
-    summary_screen_init(g_tile_summary);
     chart_screen_init(g_tile_chart);
     config_screen_init(tile_config);
 
@@ -397,7 +394,6 @@ void setup() {
     lv_obj_add_event_cb(tv, [](lv_event_t* e) {
         lv_obj_t* tile = lv_tileview_get_tile_active(lv_event_get_target_obj(e));
         chart_screen_set_active(tile == g_tile_chart);
-        summary_screen_set_active(tile == g_tile_summary);
         stats_screen_set_active(tile == g_tile_stats);
     }, LV_EVENT_VALUE_CHANGED, nullptr);
 
@@ -422,7 +418,6 @@ void loop() {
         }
         if (g_daily_ready)  { 
             stats_screen_update(g_daily);  
-            summary_screen_set_live(g_daily);
             g_daily_ready  = false; 
         }
         xSemaphoreGive(g_mutex);
@@ -430,7 +425,6 @@ void loop() {
 
     dashboard_tick();
     chart_screen_tick();
-    summary_screen_tick(); 
     config_screen_tick();   // refresca IP/RSSI cada 5 s, coste mínimo
 
     delay(5);
