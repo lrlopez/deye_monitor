@@ -50,3 +50,29 @@
 // ── Escala gráfica ────────────────────────────────────────────────────────
 #define CHART_AUTOSCALE_DEF  true
 #define CHART_MAX_KW_DEF     6
+
+// ── Pantalla (configurables desde platformio.ini con -D) ───────────────
+#ifndef SCREEN_WIDTH
+  #define SCREEN_WIDTH    480
+#endif
+#ifndef SCREEN_HEIGHT
+  #define SCREEN_HEIGHT   270
+#endif
+#ifndef FONT_SMALL_SIZE
+  #define FONT_SMALL_SIZE  12
+#endif
+#ifndef FONT_SMALL
+  #define FONT_SMALL  lv_font_montserrat_12
+#endif
+#ifndef FONT_NORMAL_SIZE
+  #define FONT_NORMAL_SIZE 14
+#endif
+#ifndef FONT_NORMAL
+  #define FONT_NORMAL lv_font_montserrat_14
+#endif
+#ifndef FONT_LARGE_SIZE
+  #define FONT_LARGE_SIZE  28
+#endif
+#ifndef FONT_LARGE
+  #define FONT_LARGE  lv_font_montserrat_28
+#endif

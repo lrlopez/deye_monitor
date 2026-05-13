@@ -2,6 +2,8 @@
 #include "config_screen.h"
 #include "storage.h"
 #include "telegram.h"
+#include "ui_constants.h"
+#include "config.h"
 
 // ── Paleta ────────────────────────────────────────────────────────────────
 #define C_BG    lv_color_hex(0x0D1117)
@@ -15,22 +17,12 @@
 #define C_BTN   lv_color_hex(0x1F6FEB)
 #define C_LIST  lv_color_hex(0x1C2128)
 
-// ── Geometría ─────────────────────────────────────────────────────────────
-#define SECTION_W  460
-#define FIELD_H     36
-#define FIELD_W    220    // reducido para dejar sitio al botón scan
-#define LBL_W      130
-#define ROW_H       42
-#define PAD          8
-#define SEC_PAD     10
-#define SCAN_BTN_W  34
-
 // Posición absoluta del campo SSID en pantalla (para anclar el dropdown)
 // sec_wifi está en y=28, campo SSID en y=18 dentro de la sección
-// 28 (sec y) + SEC_PAD(10) + 18 (row y) + FIELD_H(36) + 2 = 94
+// 28 (sec y) + CFG_SEC_PAD(10) + 18 (row y) + CFG_FIELD_H(36) + 2 = 94
 #define SSID_DROPDOWN_Y  94
-#define SSID_DROPDOWN_X  (10 + SEC_PAD + LBL_W)   // ≈ 150
-#define SSID_DROPDOWN_W  (FIELD_W + SCAN_BTN_W + 4)
+#define SSID_DROPDOWN_X  (10 + CFG_SEC_PAD + CFG_LBL_W)   // ≈ 150
+#define SSID_DROPDOWN_W  (CFG_FIELD_W + CFG_SCAN_BTN_W + 4)
 #define SSID_DROPDOWN_H  120
 
 // ── Widgets formulario ────────────────────────────────────────────────────
@@ -70,20 +62,20 @@ static uint32_t s_last_net_refresh = 0;
 static lv_obj_t* make_section(lv_obj_t* parent, const char* title, int y, int h) {
     lv_obj_t* card = lv_obj_create(parent);
     lv_obj_set_pos(card, 10, y);
-    lv_obj_set_size(card, SECTION_W, h);
+    lv_obj_set_size(card, CFG_SECTION_W, h);
     lv_obj_set_style_bg_color(card, C_CARD, 0);
     lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
     lv_obj_set_style_border_color(card, C_ACCENT, 0);
     lv_obj_set_style_border_width(card, 1, 0);
     lv_obj_set_style_border_opa(card, LV_OPA_30, 0);
-    lv_obj_set_style_radius(card, 8, 0);
-    lv_obj_set_style_pad_all(card, SEC_PAD, 0);
+    lv_obj_set_style_radius(card, UI_RADIUS, 0);
+    lv_obj_set_style_pad_all(card, CFG_SEC_PAD, 0);
     lv_obj_set_scrollbar_mode(card, LV_SCROLLBAR_MODE_OFF);
     lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* lbl = lv_label_create(card);
     lv_obj_set_pos(lbl, 0, 0);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(lbl, &FONT_SMALL, 0);
     lv_obj_set_style_text_color(lbl, C_ACCENT, 0);
     lv_label_set_text(lbl, title);
     return card;
@@ -93,7 +85,7 @@ static lv_obj_t* make_field(lv_obj_t* parent, int x, int y, int w,
                               bool password, const char* placeholder) {
     lv_obj_t* ta = lv_textarea_create(parent);
     lv_obj_set_pos(ta, x, y);
-    lv_obj_set_size(ta, w, FIELD_H);
+    lv_obj_set_size(ta, w, CFG_FIELD_H);
     lv_textarea_set_one_line(ta, true);
     lv_textarea_set_placeholder_text(ta, placeholder);
     if (password) lv_textarea_set_password_mode(ta, true);
@@ -102,7 +94,7 @@ static lv_obj_t* make_field(lv_obj_t* parent, int x, int y, int w,
     lv_obj_set_style_border_color(ta, C_ACCENT, LV_PART_MAIN);
     lv_obj_set_style_border_width(ta, 1, LV_PART_MAIN);
     lv_obj_set_style_text_color(ta, C_WHITE, LV_PART_MAIN);
-    lv_obj_set_style_text_font(ta, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_font(ta, &FONT_SMALL, LV_PART_MAIN);
     lv_obj_set_style_pad_ver(ta, 4, LV_PART_MAIN);
     lv_obj_set_style_pad_hor(ta, 6, LV_PART_MAIN);
     return ta;
@@ -111,7 +103,7 @@ static lv_obj_t* make_field(lv_obj_t* parent, int x, int y, int w,
 static lv_obj_t* make_row_label(lv_obj_t* parent, int y, const char* txt) {
     lv_obj_t* l = lv_label_create(parent);
     lv_obj_set_pos(l, 0, y + 10);
-    lv_obj_set_style_text_font(l, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(l, &FONT_SMALL, 0);
     lv_obj_set_style_text_color(l, C_MUTED, 0);
     lv_label_set_text(l, txt);
     return l;
@@ -120,13 +112,13 @@ static lv_obj_t* make_row_label(lv_obj_t* parent, int y, const char* txt) {
 static lv_obj_t* make_info_row(lv_obj_t* parent, int y, const char* key) {
     lv_obj_t* lk = lv_label_create(parent);
     lv_obj_set_pos(lk, 0, y);
-    lv_obj_set_style_text_font(lk, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(lk, &FONT_SMALL, 0);
     lv_obj_set_style_text_color(lk, C_MUTED, 0);
     lv_label_set_text(lk, key);
 
     lv_obj_t* lv2 = lv_label_create(parent);
-    lv_obj_set_pos(lv2, LBL_W, y);
-    lv_obj_set_style_text_font(lv2, &lv_font_montserrat_12, 0);
+    lv_obj_set_pos(lv2, CFG_LBL_W, y);
+    lv_obj_set_style_text_font(lv2, &FONT_SMALL, 0);
     lv_obj_set_style_text_color(lv2, C_WHITE, 0);
     lv_label_set_text(lv2, "...");
     return lv2;
@@ -209,7 +201,7 @@ static void build_ssid_list(lv_obj_t* parent_screen) {
     if (hdr_lbl) {
         lv_label_set_text(hdr_lbl, hdr_txt);
         lv_obj_set_style_text_color(hdr_lbl, C_MUTED, 0);
-        lv_obj_set_style_text_font(hdr_lbl, &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_font(hdr_lbl, &FONT_SMALL, 0);
     }
     lv_obj_set_style_bg_color(hdr, lv_color_hex(0x0D1117), 0);
     lv_obj_set_style_bg_opa(hdr, LV_OPA_COVER, 0);
@@ -237,7 +229,7 @@ static void build_ssid_list(lv_obj_t* parent_screen) {
         lv_obj_t* item_lbl = lv_obj_get_child(btn, 0);
         if (item_lbl) {
             lv_obj_set_style_text_color(item_lbl, rssi_color(rssi), 0);
-            lv_obj_set_style_text_font(item_lbl, &lv_font_montserrat_12, 0);
+            lv_obj_set_style_text_font(item_lbl, &FONT_SMALL, 0);
         }
         lv_obj_add_event_cb(btn, ssid_item_cb, LV_EVENT_CLICKED, nullptr);
     }
@@ -365,36 +357,41 @@ void config_screen_init(lv_obj_t* parent) {
     AppConfig   cfg  = {}; Storage.loadConfig(cfg);
     ChartConfig ccfg = Storage.loadChartConfig();
 
-    // ── Posiciones Y apiladas sin solapamiento ────────────────────────────
-    // Título         y=6    h=20  → bottom=26
-    // sec_wifi       y=30   h=108 → bottom=138
-    // sec_inv        y=142  h=108 → bottom=250
-    // sec_chart      y=254  h=70  → bottom=324
-    // sec_net        y=328  h=58  → bottom=386
-    // lbl_status     y=392
-    // btn Guardar    y=390
-    // (contenido total ~434px, scrolleable)
+    // Posiciones Y calculadas en cascada
+    const int SEC_WIFI_Y   = SY(30);
+    const int SEC_WIFI_H   = CFG_FIELD_H*2 + CFG_SEC_PAD*2 + SY(20);
+    const int SEC_INV_Y    = SEC_WIFI_Y  + SEC_WIFI_H  + SY(4);
+    const int SEC_INV_H    = SEC_WIFI_H;
+    const int SEC_CHART_Y  = SEC_INV_Y  + SEC_INV_H   + SY(4);
+    const int SEC_CHART_H  = CFG_FIELD_H + SS(16) + CFG_SEC_PAD*2 + SY(30);
+    const int SEC_NET_Y    = SEC_CHART_Y + SEC_CHART_H + SY(4);
+    const int SEC_NET_H    = CFG_FIELD_H + SY(20);
+    const int SEC_TG_Y     = SEC_NET_Y   + SEC_NET_H   + SY(4);
+    const int SEC_TG_H     = CFG_FIELD_H*2 + SS(16) + CFG_SEC_PAD*2 + SY(50);
+    const int BTN_Y        = SEC_TG_Y   + SEC_TG_H    + SY(8);
+
+    
 
     // ── Título ────────────────────────────────────────────────────────────
     lv_obj_t* title = lv_label_create(parent);
-    lv_obj_set_pos(title, 0, 6); lv_obj_set_width(title, 480);
+    lv_obj_set_pos(title, 0, SY(6)); lv_obj_set_width(title, SCREEN_WIDTH);
     lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(title, &FONT_NORMAL, 0);
     lv_obj_set_style_text_color(title, C_MUTED, 0);
     lv_label_set_text(title, LV_SYMBOL_SETTINGS "  Configuracion");
 
     // ── Sección WiFi ──────────────────────────────────────────────────────
-    lv_obj_t* sec_wifi = make_section(parent, LV_SYMBOL_WIFI "RED WiFi", 30, 108);
+    lv_obj_t* sec_wifi = make_section(parent, LV_SYMBOL_WIFI "RED WiFi", SEC_WIFI_Y, SEC_WIFI_H);
 
     make_row_label(sec_wifi, 18, "SSID");
-    ta_ssid = make_field(sec_wifi, LBL_W, 18, FIELD_W, false, "Nombre red WiFi");
+    ta_ssid = make_field(sec_wifi, CFG_LBL_W, 18, CFG_FIELD_W, false, "Nombre red WiFi");
     lv_textarea_set_text(ta_ssid, cfg.wifi_ssid);
     lv_obj_add_event_cb(ta_ssid, ta_event_cb, LV_EVENT_FOCUSED,   nullptr);
     lv_obj_add_event_cb(ta_ssid, ta_event_cb, LV_EVENT_DEFOCUSED, nullptr);
 
     scan_btn = lv_btn_create(sec_wifi);
-    lv_obj_set_pos(scan_btn, LBL_W + FIELD_W + 4, 18);
-    lv_obj_set_size(scan_btn, SCAN_BTN_W, FIELD_H);
+    lv_obj_set_pos(scan_btn, CFG_LBL_W + CFG_FIELD_W + SX(4), SY(18));
+    lv_obj_set_size(scan_btn, CFG_SCAN_BTN_W, CFG_FIELD_H);
     lv_obj_set_style_bg_color(scan_btn, lv_color_hex(0x21262D), 0);
     lv_obj_set_style_border_color(scan_btn, C_ACCENT, 0);
     lv_obj_set_style_border_width(scan_btn, 1, 0);
@@ -405,29 +402,29 @@ void config_screen_init(lv_obj_t* parent) {
     scan_btn_lbl = lv_label_create(scan_btn);
     lv_label_set_text(scan_btn_lbl, LV_SYMBOL_REFRESH);
     lv_obj_set_style_text_color(scan_btn_lbl, C_ACCENT, 0);
-    lv_obj_set_style_text_font(scan_btn_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(scan_btn_lbl, &FONT_NORMAL, 0);
     lv_obj_center(scan_btn_lbl);
 
     make_row_label(sec_wifi, 62, "Contrasena");
-    ta_pass = make_field(sec_wifi, LBL_W, 62,
-                         FIELD_W + SCAN_BTN_W + 4, true, "Contrasena WiFi");
+    ta_pass = make_field(sec_wifi, CFG_LBL_W, 62,
+                         CFG_FIELD_W + CFG_SCAN_BTN_W + 4, true, "Contrasena WiFi");
     lv_textarea_set_text(ta_pass, cfg.wifi_pass);
     lv_obj_add_event_cb(ta_pass, ta_event_cb, LV_EVENT_FOCUSED,   nullptr);
     lv_obj_add_event_cb(ta_pass, ta_event_cb, LV_EVENT_DEFOCUSED, nullptr);
 
     // ── Sección Inversor ──────────────────────────────────────────────────
-    lv_obj_t* sec_inv = make_section(parent, LV_SYMBOL_EDIT " INVERSOR / DATALOGGER", 142, 108);
+    lv_obj_t* sec_inv = make_section(parent, LV_SYMBOL_EDIT " INVERSOR / DATALOGGER", SEC_INV_Y, SEC_INV_H);
 
     make_row_label(sec_inv, 18, "IP Logger");
-    ta_logger_ip = make_field(sec_inv, LBL_W, 18,
-                              FIELD_W + SCAN_BTN_W + 4, false, "192.168.1.xxx");
+    ta_logger_ip = make_field(sec_inv, CFG_LBL_W, 18,
+                              CFG_FIELD_W + CFG_SCAN_BTN_W + 4, false, "192.168.1.xxx");
     lv_textarea_set_text(ta_logger_ip, cfg.logger_ip);
     lv_obj_add_event_cb(ta_logger_ip, ta_event_cb, LV_EVENT_FOCUSED,   nullptr);
     lv_obj_add_event_cb(ta_logger_ip, ta_event_cb, LV_EVENT_DEFOCUSED, nullptr);
 
     make_row_label(sec_inv, 62, "Num. Serie");
-    ta_logger_serial = make_field(sec_inv, LBL_W, 62,
-                                  FIELD_W + SCAN_BTN_W + 4, false, "Decimal (etiqueta)");
+    ta_logger_serial = make_field(sec_inv, CFG_LBL_W, 62,
+                                  CFG_FIELD_W + CFG_SCAN_BTN_W + 4, false, "Decimal (etiqueta)");
     char sbuf[16];
     snprintf(sbuf, sizeof(sbuf), "%lu", (unsigned long)cfg.logger_serial);
     lv_textarea_set_text(ta_logger_serial, sbuf);
@@ -436,36 +433,36 @@ void config_screen_init(lv_obj_t* parent) {
 
     // ── Sección Gráfica ───────────────────────────────────────────────────────
     // h=100: fila checkbox(16+10) + fila label/valor(20) + fila slider(24) + padding
-    lv_obj_t* sec_chart = make_section(parent, LV_SYMBOL_CHARGE " GRAFICA", 254, 100);
+    lv_obj_t* sec_chart = make_section(parent, LV_SYMBOL_CHARGE " GRAFICA", SEC_CHART_Y, SEC_CHART_H);
 
     // Fila 1: checkbox autoescalado  (y=16)
     cb_autoscale = lv_checkbox_create(sec_chart);
     lv_obj_set_pos(cb_autoscale, 0, 16);
     lv_checkbox_set_text(cb_autoscale, "Autoescalado");
-    lv_obj_set_style_text_font(cb_autoscale, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(cb_autoscale, &FONT_SMALL, 0);
     lv_obj_set_style_text_color(cb_autoscale, C_WHITE, 0);
     if (ccfg.autoscale) lv_obj_add_state(cb_autoscale, LV_STATE_CHECKED);
 
     // Fila 2: "Max kW:" a la izquierda, valor numérico a la derecha  (y=44)
     lv_obj_t* lkw = lv_label_create(sec_chart);
     lv_obj_set_pos(lkw, 0, 46);
-    lv_obj_set_style_text_font(lkw, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(lkw, &FONT_SMALL, 0);
     lv_obj_set_style_text_color(lkw, C_MUTED, 0);
     lv_label_set_text(lkw, "Max kW:");
 
-    lv_obj_t* lbl_kw_val = lv_label_create(sec_chart);
-    lv_obj_set_pos(lbl_kw_val, 70, 46);
-    lv_obj_set_style_text_font(lbl_kw_val, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(lbl_kw_val, C_WHITE, 0);
+    lv_obj_t* CFG_LBL_kw_val = lv_label_create(sec_chart);
+    lv_obj_set_pos(CFG_LBL_kw_val, 70, 46);
+    lv_obj_set_style_text_font(CFG_LBL_kw_val, &FONT_SMALL, 0);
+    lv_obj_set_style_text_color(CFG_LBL_kw_val, C_WHITE, 0);
     char kwbuf[8];
     snprintf(kwbuf, sizeof(kwbuf), "%d kW", ccfg.max_kw);
-    lv_label_set_text(lbl_kw_val, kwbuf);
+    lv_label_set_text(CFG_LBL_kw_val, kwbuf);
 
     // Fila 3: slider ocupando todo el ancho menos márgenes  (y=66)
     // Margen derecho de 16px para que el knob no sobresalga nunca
     lv_obj_t* slider_kw = lv_slider_create(sec_chart);
     lv_obj_set_pos(slider_kw, 0, 68);
-    lv_obj_set_size(slider_kw, SECTION_W - SEC_PAD * 2 - 16, 16);
+    lv_obj_set_size(slider_kw, CFG_SECTION_W - CFG_SEC_PAD * 2 - 16, 16);
     lv_slider_set_range(slider_kw, 1, 20);
     lv_slider_set_value(slider_kw, ccfg.max_kw, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(slider_kw, C_BTN,                   LV_PART_INDICATOR);
@@ -481,52 +478,52 @@ void config_screen_init(lv_obj_t* parent) {
         char buf[8];
         snprintf(buf, sizeof(buf), "%d kW", (int)lv_slider_get_value(sl));
         lv_label_set_text(lbl, buf);
-    }, LV_EVENT_VALUE_CHANGED, lbl_kw_val);
+    }, LV_EVENT_VALUE_CHANGED, CFG_LBL_kw_val);
 
     // ── Sección Estado red  (baja a 358 = 254+100+4) ──────────────────────────
-    lv_obj_t* sec_net = make_section(parent, LV_SYMBOL_GPS " ESTADO RED", 358, 70);
+    lv_obj_t* sec_net = make_section(parent, LV_SYMBOL_GPS " ESTADO RED", SEC_NET_Y, SEC_NET_H);
     lbl_ip   = make_info_row(sec_net, 18, "IP ESP32");
     lbl_rssi = make_info_row(sec_net, 38, "Senal WiFi");
 
     // ── Sección Telegram (y=432, h=178) ───────────────────────────────────
     TelegramConfig tgcfg = Storage.loadTelegramConfig();
 
-    lv_obj_t* sec_tg = make_section(parent, LV_SYMBOL_BELL " TELEGRAM", 432, 178);
+    lv_obj_t* sec_tg = make_section(parent, LV_SYMBOL_BELL " TELEGRAM", SEC_TG_Y, SEC_TG_H);
 
     // Token
     make_row_label(sec_tg, 18, "Bot Token");
-    lv_obj_t* ta_token = make_field(sec_tg, LBL_W, 18,
-                                     SECTION_W - LBL_W - SEC_PAD, false, "123456:ABC...");
+    lv_obj_t* ta_token = make_field(sec_tg, CFG_LBL_W, 18,
+                                     CFG_SECTION_W - CFG_LBL_W - CFG_SEC_PAD, false, "123456:ABC...");
     lv_textarea_set_text(ta_token, tgcfg.token);
     lv_obj_add_event_cb(ta_token, ta_event_cb, LV_EVENT_FOCUSED,   nullptr);
     lv_obj_add_event_cb(ta_token, ta_event_cb, LV_EVENT_DEFOCUSED, nullptr);
 
     // Chat ID
     make_row_label(sec_tg, 62, "Chat ID");
-    lv_obj_t* ta_chatid = make_field(sec_tg, LBL_W, 62,
-                                      FIELD_W + SCAN_BTN_W + 4, false, "-100123456789");
+    lv_obj_t* ta_chatid = make_field(sec_tg, CFG_LBL_W, 62,
+                                      CFG_FIELD_W + CFG_SCAN_BTN_W + 4, false, "-100123456789");
     lv_textarea_set_text(ta_chatid, tgcfg.chat_id);
     lv_obj_add_event_cb(ta_chatid, ta_event_cb, LV_EVENT_FOCUSED,   nullptr);
     lv_obj_add_event_cb(ta_chatid, ta_event_cb, LV_EVENT_DEFOCUSED, nullptr);
 
     // Umbral batería
-    lv_obj_t* lbl_thr = lv_label_create(sec_tg);
-    lv_obj_set_pos(lbl_thr, 0, 106);
-    lv_obj_set_style_text_font(lbl_thr, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(lbl_thr, C_MUTED, 0);
-    lv_label_set_text(lbl_thr, "Alerta bat.:");
+    lv_obj_t* CFG_LBL_thr = lv_label_create(sec_tg);
+    lv_obj_set_pos(CFG_LBL_thr, 0, 106);
+    lv_obj_set_style_text_font(CFG_LBL_thr, &FONT_SMALL, 0);
+    lv_obj_set_style_text_color(CFG_LBL_thr, C_MUTED, 0);
+    lv_label_set_text(CFG_LBL_thr, "Alerta bat.:");
 
-    lv_obj_t* lbl_thr_val = lv_label_create(sec_tg);
-    lv_obj_set_pos(lbl_thr_val, 90, 106);
-    lv_obj_set_style_text_font(lbl_thr_val, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(lbl_thr_val, C_WHITE, 0);
+    lv_obj_t* CFG_LBL_thr_val = lv_label_create(sec_tg);
+    lv_obj_set_pos(CFG_LBL_thr_val, 90, 106);
+    lv_obj_set_style_text_font(CFG_LBL_thr_val, &FONT_SMALL, 0);
+    lv_obj_set_style_text_color(CFG_LBL_thr_val, C_WHITE, 0);
     char thrbuf[8];
     snprintf(thrbuf, sizeof(thrbuf), "%d%%", tgcfg.batt_threshold);
-    lv_label_set_text(lbl_thr_val, thrbuf);
+    lv_label_set_text(CFG_LBL_thr_val, thrbuf);
 
     lv_obj_t* slider_thr = lv_slider_create(sec_tg);
     lv_obj_set_pos(slider_thr, 110 + 24, 110);
-    lv_obj_set_size(slider_thr, SECTION_W - 110 - 40, 16);
+    lv_obj_set_size(slider_thr, CFG_SECTION_W - 110 - 40, 16);
     lv_slider_set_range(slider_thr, 5, 50);
     lv_slider_set_value(slider_thr, tgcfg.batt_threshold, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(slider_thr, C_BTN,                  LV_PART_INDICATOR);
@@ -539,43 +536,43 @@ void config_screen_init(lv_obj_t* parent) {
         char buf[8];
         snprintf(buf, sizeof(buf), "%d%%", (int)lv_slider_get_value(sl));
         lv_label_set_text(lbl, buf);
-    }, LV_EVENT_VALUE_CHANGED, lbl_thr_val);
+    }, LV_EVENT_VALUE_CHANGED, CFG_LBL_thr_val);
 
     // Checkboxes de alertas
     lv_obj_t* cb_solar = lv_checkbox_create(sec_tg);
     lv_obj_set_pos(cb_solar, 0, 132);
     lv_checkbox_set_text(cb_solar, "Solar");
-    lv_obj_set_style_text_font(cb_solar, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(cb_solar, &FONT_SMALL, 0);
     lv_obj_set_style_text_color(cb_solar, C_WHITE, 0);
     if (tgcfg.notify_solar) lv_obj_add_state(cb_solar, LV_STATE_CHECKED);
 
     lv_obj_t* cb_grid = lv_checkbox_create(sec_tg);
     lv_obj_set_pos(cb_grid, 90, 132);
     lv_checkbox_set_text(cb_grid, "Red");
-    lv_obj_set_style_text_font(cb_grid, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(cb_grid, &FONT_SMALL, 0);
     lv_obj_set_style_text_color(cb_grid, C_WHITE, 0);
     if (tgcfg.notify_grid) lv_obj_add_state(cb_grid, LV_STATE_CHECKED);
 
     lv_obj_t* cb_logger = lv_checkbox_create(sec_tg);
     lv_obj_set_pos(cb_logger, 165, 132);
     lv_checkbox_set_text(cb_logger, "Logger");
-    lv_obj_set_style_text_font(cb_logger, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(cb_logger, &FONT_SMALL, 0);
     lv_obj_set_style_text_color(cb_logger, C_WHITE, 0);
     if (tgcfg.notify_logger) lv_obj_add_state(cb_logger, LV_STATE_CHECKED);
 
     // Botón de prueba
     lv_obj_t* btn_test = lv_btn_create(sec_tg);
-    lv_obj_set_pos(btn_test, SECTION_W - SEC_PAD*2 - 110, 128);
+    lv_obj_set_pos(btn_test, CFG_SECTION_W - CFG_SEC_PAD*2 - 110, 128);
     lv_obj_set_size(btn_test, 110, 30);
     lv_obj_set_style_bg_color(btn_test, lv_color_hex(0x2D7D46), 0);
     lv_obj_set_style_radius(btn_test, 6, 0);
     lv_obj_add_event_cb(btn_test, [](lv_event_t*) {
         Telegram.enqueue(AlertType::TEST);
     }, LV_EVENT_CLICKED, nullptr);
-    lv_obj_t* lbl_test = lv_label_create(btn_test);
-    lv_label_set_text(lbl_test, LV_SYMBOL_BELL " Probar");
-    lv_obj_set_style_text_font(lbl_test, &lv_font_montserrat_12, 0);
-    lv_obj_center(lbl_test);
+    lv_obj_t* CFG_LBL_test = lv_label_create(btn_test);
+    lv_label_set_text(CFG_LBL_test, LV_SYMBOL_BELL " Probar");
+    lv_obj_set_style_text_font(CFG_LBL_test, &FONT_SMALL, 0);
+    lv_obj_center(CFG_LBL_test);
 
     // Guardar referencias para save_btn_cb
     // (añadir como static al principio del fichero)
@@ -588,22 +585,22 @@ void config_screen_init(lv_obj_t* parent) {
 
     // ── Botón Guardar + status  (bajan acordes) ───────────────────────────────
     lbl_status = lv_label_create(parent);
-    lv_obj_set_pos(lbl_status, 10, 626);
+    lv_obj_set_pos(lbl_status, SX(10),  BTN_Y + SY(4));
     lv_obj_set_width(lbl_status, 310);
-    lv_obj_set_style_text_font(lbl_status, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(lbl_status, &FONT_SMALL, 0);
     lv_obj_set_style_text_color(lbl_status, C_MUTED, 0);
     lv_label_set_text(lbl_status, "");
 
     lv_obj_t* btn = lv_btn_create(parent);
-    lv_obj_set_pos(btn, 340, 620);
-    lv_obj_set_size(btn, 130, 36);
+    lv_obj_set_pos(btn,        SCREEN_WIDTH - SX(140), BTN_Y);
+    lv_obj_set_size(btn,       SX(130), CFG_FIELD_H);
     lv_obj_set_style_bg_color(btn, C_BTN, 0);
     lv_obj_set_style_radius(btn, 6, 0);
     lv_obj_add_event_cb(btn, save_btn_cb, LV_EVENT_CLICKED, nullptr);
 
     lv_obj_t* blbl = lv_label_create(btn);
     lv_label_set_text(blbl, LV_SYMBOL_SAVE " Guardar");
-    lv_obj_set_style_text_font(blbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(blbl, &FONT_NORMAL, 0);
     lv_obj_center(blbl);
 
     // ── Teclado ────────────────────────────────────────────────────────────

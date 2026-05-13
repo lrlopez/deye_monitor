@@ -2,6 +2,8 @@
 #include "summary_screen.h"
 #include "storage.h"
 #include "data_store.h"
+#include "ui_constants.h"
+#include "config.h"
 
 // ── Paleta ────────────────────────────────────────────────────────────────
 #define C_BG      lv_color_hex(0x0D1117)
@@ -18,17 +20,6 @@
 #define C_PRO_LOD lv_color_hex(0xF5C518)
 #define C_PRO_CHG lv_color_hex(0x1A56DB)
 #define C_PRO_EXP lv_color_hex(0xE88080)
-
-// ── Geometría ─────────────────────────────────────────────────────────────
-#define NAV_H   28
-#define LEG_H   24
-#define CONT_H  (272 - NAV_H - LEG_H)   // 220
-#define ROW_H   (CONT_H / 7)             // 31
-#define DAY_W   44
-#define BAR_X   DAY_W
-#define BAR_W   (480 - BAR_X - 4)        // 432
-#define BAR_H   10
-#define BAR_GAP  4
 
 // ── Datos de dibujo por fila (pool estático) ──────────────────────────────
 struct RowDrawData {
@@ -153,9 +144,9 @@ static void row_draw_cb(lv_event_t* e) {
     lv_area_t area; lv_obj_get_coords(obj, &area);
     int h = lv_obj_get_height(obj);
 
-    int bars_h = BAR_H * 2 + BAR_GAP;
-    int y0     = area.y1 + (h - bars_h) / 2;
-    int y1     = y0 + BAR_H + BAR_GAP;
+    const int bars_h = SUMM_BAR_H * 2 + SUMM_BAR_GAP;
+    int y0 = area.y1 + (h - bars_h) / 2;
+    int y1 = y0 + SUMM_BAR_H + SUMM_BAR_GAP;
 
     lv_draw_rect_dsc_t dsc;
     lv_draw_rect_dsc_init(&dsc);
@@ -163,10 +154,10 @@ static void row_draw_cb(lv_event_t* e) {
 
     // Fondos grises
     dsc.bg_color = lv_color_hex(0x21262D); dsc.bg_opa = LV_OPA_COVER;
-    lv_area_t bg0 = {(lv_coord_t)(area.x1+BAR_X), (lv_coord_t)y0,
-                     (lv_coord_t)(area.x1+BAR_X+BAR_W-1),(lv_coord_t)(y0+BAR_H-1)};
-    lv_area_t bg1 = {(lv_coord_t)(area.x1+BAR_X), (lv_coord_t)y1,
-                     (lv_coord_t)(area.x1+BAR_X+BAR_W-1),(lv_coord_t)(y1+BAR_H-1)};
+    lv_area_t bg0 = {(lv_coord_t)(area.x1+SUMM_BAR_X), (lv_coord_t)y0,
+                     (lv_coord_t)(area.x1+SUMM_BAR_X+SUMM_BAR_W-1),(lv_coord_t)(y0+SUMM_BAR_H-1)};
+    lv_area_t bg1 = {(lv_coord_t)(area.x1+SUMM_BAR_X), (lv_coord_t)y1,
+                     (lv_coord_t)(area.x1+SUMM_BAR_X+SUMM_BAR_W-1),(lv_coord_t)(y1+SUMM_BAR_H-1)};
     lv_draw_rect(layer, &dsc, &bg0);
     lv_draw_rect(layer, &dsc, &bg1);
 
@@ -175,16 +166,16 @@ static void row_draw_cb(lv_event_t* e) {
     // Barra CONSUMO
     float con_tot = rd->con[0] + rd->con[1] + rd->con[2];
     int   bar0_w  = (rd->con_max > 0.01f)
-                    ? (int)(con_tot / rd->con_max * BAR_W) : 0;
+                    ? (int)(con_tot / rd->con_max * SUMM_BAR_W) : 0;
     if (bar0_w > 0) {
-        int x = area.x1 + BAR_X;
+        int x = area.x1 + SUMM_BAR_X;
         for (int s = 0; s < 3; s++) {
             int sw = (con_tot > 0.001f)
                      ? (int)(rd->con[s] / con_tot * bar0_w) : 0;
             if (sw < 1) continue;
             dsc.bg_color = s_con_col[s];
             lv_area_t seg = {(lv_coord_t)x, (lv_coord_t)y0,
-                             (lv_coord_t)(x+sw-1),(lv_coord_t)(y0+BAR_H-1)};
+                             (lv_coord_t)(x+sw-1),(lv_coord_t)(y0+SUMM_BAR_H-1)};
             lv_draw_rect(layer, &dsc, &seg);
             x += sw;
         }
@@ -193,16 +184,16 @@ static void row_draw_cb(lv_event_t* e) {
     // Barra PRODUCCIÓN
     float pro_tot = rd->pro[0] + rd->pro[1] + rd->pro[2];
     int   bar1_w  = (rd->pro_max > 0.01f)
-                    ? (int)(pro_tot / rd->pro_max * BAR_W) : 0;
+                    ? (int)(pro_tot / rd->pro_max * SUMM_BAR_W) : 0;
     if (bar1_w > 0) {
-        int x = area.x1 + BAR_X;
+        int x = area.x1 + SUMM_BAR_X;
         for (int s = 0; s < 3; s++) {
             int sw = (pro_tot > 0.001f)
                      ? (int)(rd->pro[s] / pro_tot * bar1_w) : 0;
             if (sw < 1) continue;
             dsc.bg_color = s_pro_col[s];
             lv_area_t seg = {(lv_coord_t)x, (lv_coord_t)y1,
-                             (lv_coord_t)(x+sw-1),(lv_coord_t)(y1+BAR_H-1)};
+                             (lv_coord_t)(x+sw-1),(lv_coord_t)(y1+SUMM_BAR_H-1)};
             lv_draw_rect(layer, &dsc, &seg);
             x += sw;
         }
@@ -324,12 +315,12 @@ static lv_obj_t* nav_btn(lv_obj_t* p, int x, const char* txt, lv_event_cb_t cb) 
     lv_obj_t* btn = lv_btn_create(p);
     lv_obj_set_pos(btn, x, 2); lv_obj_set_size(btn, 36, NAV_H-4);
     lv_obj_set_style_bg_color(btn, lv_color_hex(0x21262D), 0);
-    lv_obj_set_style_radius(btn, 5, 0);
+    lv_obj_set_style_radius(btn, SS(5), 0);
     lv_obj_set_style_border_width(btn, 0, 0);
     lv_obj_set_style_shadow_width(btn, 0, 0);
     lv_obj_t* l = lv_label_create(btn);
     lv_label_set_text(l, txt);
-    lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(l, &FONT_NORMAL, 0);
     lv_obj_set_style_text_color(l, lv_color_hex(0x4A9EFF), 0);
     lv_obj_center(l);
     lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, nullptr);
@@ -376,46 +367,43 @@ void summary_screen_init(lv_obj_t* parent) {
     lv_obj_remove_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
 
     // ── Barra de navegación ───────────────────────────────────────────────
-    s_btn_prev = nav_btn(parent, 2,   LV_SYMBOL_LEFT,  prev_cb);
-    s_btn_next = nav_btn(parent, 440, LV_SYMBOL_RIGHT, next_cb);
+    s_btn_prev = nav_btn(parent, SX(2), LV_SYMBOL_LEFT, prev_cb);
+    s_btn_next = nav_btn(parent, SCREEN_WIDTH - NAV_BTN_W - SX(2),
+                          LV_SYMBOL_RIGHT, next_cb);
     lv_obj_add_state(s_btn_next, LV_STATE_DISABLED);
 
     s_lbl_period = lv_label_create(parent);
-    lv_obj_set_pos(s_lbl_period, 42, 7);
-    lv_obj_set_width(s_lbl_period, 396);
+    lv_obj_set_pos(s_lbl_period, NAV_BTN_W + SX(4), SY(7));
+    lv_obj_set_width(s_lbl_period, SCREEN_WIDTH - 2*(NAV_BTN_W + SX(4)));
     lv_obj_set_style_text_align(s_lbl_period, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(s_lbl_period, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(s_lbl_period, &FONT_NORMAL, 0);
     lv_obj_set_style_text_color(s_lbl_period, C_WHITE, 0);
     lv_label_set_text(s_lbl_period, "Esta semana");
 
-    // ── 7 filas fijas: se crean UNA VEZ y se reusan ───────────────────────
+    // ── 7 filas fijas ─────────────────────────────────────────────────────
     for (int i = 0; i < 7; i++) {
         lv_obj_t* row = lv_obj_create(parent);
-        lv_obj_set_pos(row, 0, NAV_H + i * ROW_H);
-        lv_obj_set_size(row, 480, ROW_H - 1);
+        lv_obj_set_pos(row, 0, SUMM_NAV_H + i * SUMM_ROW_H);
+        lv_obj_set_size(row, SCREEN_WIDTH, SUMM_ROW_H - 1);
         lv_obj_set_style_bg_color(row, C_BG, 0);
         lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
         lv_obj_set_style_bg_color(row, lv_color_hex(0x161B22), LV_STATE_PRESSED);
-        lv_obj_set_style_border_width(row, 0,        LV_PART_MAIN);
-        lv_obj_set_style_border_color(row, C_SEP,    LV_PART_MAIN);
+        lv_obj_set_style_border_width(row, 0,     LV_PART_MAIN);
+        lv_obj_set_style_border_color(row, C_SEP, LV_PART_MAIN);
         lv_obj_set_style_border_side(row, LV_BORDER_SIDE_BOTTOM, LV_PART_MAIN);
-        lv_obj_set_style_border_width(row, 1,        LV_PART_MAIN);
+        lv_obj_set_style_border_width(row, 1,     LV_PART_MAIN);
         lv_obj_set_style_pad_all(row, 0, 0);
         lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_remove_flag(row, LV_OBJ_FLAG_GESTURE_BUBBLE);
         lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
-
-        // Draw callback apunta a s_rdd[i] — estático, siempre válido
-        lv_obj_add_event_cb(row, row_draw_cb,  LV_EVENT_DRAW_MAIN,
-                             &s_rdd[i]);
+        lv_obj_add_event_cb(row, row_draw_cb,  LV_EVENT_DRAW_MAIN, &s_rdd[i]);
         lv_obj_add_event_cb(row, row_click_cb, LV_EVENT_CLICKED,
                              (void*)(intptr_t)i);
 
-        // Etiqueta del día
         lv_obj_t* lbl = lv_label_create(row);
-        lv_obj_set_pos(lbl, 2, (ROW_H - 14) / 2);
-        lv_obj_set_width(lbl, DAY_W - 2);
-        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_12, 0);
+        lv_obj_set_pos(lbl, SX(2), (SUMM_ROW_H - 1 - FONT_SMALL_SIZE) / 2);
+        lv_obj_set_width(lbl, SUMM_DAY_W - SX(2));
+        lv_obj_set_style_text_font(lbl, &FONT_SMALL, 0);
         lv_obj_set_style_text_color(lbl, C_MUTED, 0);
         lv_label_set_text(lbl, "---");
 
@@ -423,45 +411,46 @@ void summary_screen_init(lv_obj_t* parent) {
         s_row_labels[i] = lbl;
     }
 
-    // ── Leyenda (igual que antes) ─────────────────────────────────────────
+    // ── Leyenda dos líneas ────────────────────────────────────────────────
     struct LegItem { const char* name; lv_color_t col; int x; int dy; };
     LegItem legs[] = {
-        {"PV",         C_CON_PV,   4,   0},
-        {"Descarga",   C_CON_DIS,  50,  0},
-        {"Import.",    C_CON_IMP,  130, 0},
-        {"Autocon.",   C_PRO_LOD,  210, 0},
-        {"Carga bat.", C_PRO_CHG,  286, 0},
-        {"Export.",    C_PRO_EXP,  384, 0},
+        {"PV",         C_CON_PV,   SX(4),   0},
+        {"Descarga",   C_CON_DIS,  SX(50),  0},
+        {"Import.",    C_CON_IMP,  SX(130), 0},
+        {"Autocon.",   C_PRO_LOD,  SX(4),   FONT_SMALL_SIZE + SY(2)},
+        {"Carga bat.", C_PRO_CHG,  SX(80),  FONT_SMALL_SIZE + SY(2)},
+        {"Export.",    C_PRO_EXP,  SX(178), FONT_SMALL_SIZE + SY(2)},
     };
-    int leg_y0 = NAV_H + CONT_H + 1;
+    int leg_y0 = SUMM_NAV_H + SUMM_CONT_H + SY(1);
     for (auto& lg : legs) {
         lv_obj_t* dot = lv_obj_create(parent);
-        lv_obj_set_pos(dot, lg.x, leg_y0 + lg.dy + 2);
-        lv_obj_set_size(dot, 8, 8);
+        lv_obj_set_pos(dot, lg.x, leg_y0 + lg.dy + SY(2));
+        lv_obj_set_size(dot, UI_DOT_SZ, UI_DOT_SZ);
         lv_obj_set_style_bg_color(dot, lg.col, 0);
         lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(dot, 0, 0);
-        lv_obj_set_style_radius(dot, 2, 0);
+        lv_obj_set_style_radius(dot, SS(2), 0);
         lv_obj_remove_flag(dot, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_remove_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
 
         lv_obj_t* lbl = lv_label_create(parent);
-        lv_obj_set_pos(lbl, lg.x + 11, leg_y0 + lg.dy);
-        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_12, 0);
+        lv_obj_set_pos(lbl, lg.x + UI_DOT_SZ + SX(3), leg_y0 + lg.dy);
+        lv_obj_set_style_text_font(lbl, &FONT_SMALL, 0);
         lv_obj_set_style_text_color(lbl, C_MUTED, 0);
         lv_label_set_text(lbl, lg.name);
     }
 
-    // ── Popup (igual que antes) ───────────────────────────────────────────
+    // ── Popup centrado ────────────────────────────────────────────────────
     s_popup = lv_obj_create(parent);
-    lv_obj_set_pos(s_popup, (480-220)/2, (272-200)/2);
-    lv_obj_set_size(s_popup, 220, 200);
+    lv_obj_set_pos(s_popup, (SCREEN_WIDTH  - POPUP_STATS_W) / 2,
+                             (SCREEN_HEIGHT - POPUP_STATS_H) / 2);
+    lv_obj_set_size(s_popup, POPUP_STATS_W, POPUP_STATS_H);
     lv_obj_set_style_bg_color(s_popup, lv_color_hex(0x1C2128), 0);
-    lv_obj_set_style_bg_opa(s_popup, 247, 0); // LV_OPA_97
+    lv_obj_set_style_bg_opa(s_popup, 247, 0);
     lv_obj_set_style_border_color(s_popup, lv_color_hex(0x30363D), 0);
-    lv_obj_set_style_border_width(s_popup, 1, 0);
-    lv_obj_set_style_radius(s_popup, 8, 0);
-    lv_obj_set_style_pad_all(s_popup, 8, 0);
+    lv_obj_set_style_border_width(s_popup, UI_BORDER, 0);
+    lv_obj_set_style_radius(s_popup, SS(8), 0);
+    lv_obj_set_style_pad_all(s_popup, POPUP_PAD, 0);
     lv_obj_set_scrollbar_mode(s_popup, LV_SCROLLBAR_MODE_OFF);
     lv_obj_remove_flag(s_popup, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_popup, LV_OBJ_FLAG_HIDDEN);
@@ -470,38 +459,45 @@ void summary_screen_init(lv_obj_t* parent) {
 
     s_popup_title = lv_label_create(s_popup);
     lv_obj_set_pos(s_popup_title, 0, 0);
-    lv_obj_set_width(s_popup_title, 204);
-    lv_obj_set_style_text_font(s_popup_title, &lv_font_montserrat_14, 0);
+    lv_obj_set_width(s_popup_title, POPUP_STATS_W - POPUP_PAD*2);
+    lv_obj_set_style_text_font(s_popup_title, &FONT_NORMAL, 0);
     lv_obj_set_style_text_color(s_popup_title, C_WHITE, 0);
     lv_label_set_text(s_popup_title, "");
 
+    int py_base = FONT_NORMAL_SIZE + SY(6);
+
     s_popup_con_total = lv_label_create(s_popup);
-    lv_obj_set_pos(s_popup_con_total, 0, 20);
-    lv_obj_set_style_text_font(s_popup_con_total, &lv_font_montserrat_12, 0);
+    lv_obj_set_pos(s_popup_con_total, 0, py_base);
+    lv_obj_set_style_text_font(s_popup_con_total, &FONT_SMALL, 0);
     lv_obj_set_style_text_color(s_popup_con_total, C_MUTED, 0);
     lv_label_set_text(s_popup_con_total, "Consumo --");
 
     const char* cn[3] = {"Solar dir.", "Descarga", "Import."};
     for (int i = 0; i < 3; i++)
-        popup_row(s_popup, 36 + i*18, s_con_col[i], cn[i],
+        popup_row(s_popup,
+                  py_base + FONT_SMALL_SIZE + SY(4) + i * POPUP_ROW_H,
+                  s_con_col[i], cn[i],
                   &s_popup_con_vals[i], &s_popup_con_pcts[i]);
 
+    int py_pro = py_base + FONT_SMALL_SIZE + SY(4) + 3*POPUP_ROW_H + SY(8);
     s_popup_pro_total = lv_label_create(s_popup);
-    lv_obj_set_pos(s_popup_pro_total, 0, 96);
-    lv_obj_set_style_text_font(s_popup_pro_total, &lv_font_montserrat_12, 0);
+    lv_obj_set_pos(s_popup_pro_total, 0, py_pro);
+    lv_obj_set_style_text_font(s_popup_pro_total, &FONT_SMALL, 0);
     lv_obj_set_style_text_color(s_popup_pro_total, C_MUTED, 0);
     lv_label_set_text(s_popup_pro_total, "Produccion --");
 
     const char* pn[3] = {"Autocon.", "Carga bat.", "Export."};
     for (int i = 0; i < 3; i++)
-        popup_row(s_popup, 112 + i*18, s_pro_col[i], pn[i],
+        popup_row(s_popup,
+                  py_pro + FONT_SMALL_SIZE + SY(4) + i * POPUP_ROW_H,
+                  s_pro_col[i], pn[i],
                   &s_popup_pro_vals[i], &s_popup_pro_pcts[i]);
 
     lv_obj_t* hint = lv_label_create(s_popup);
-    lv_obj_set_pos(hint, 0, 172);
-    lv_obj_set_width(hint, 204);
+    lv_obj_set_pos(hint, 0, py_pro + FONT_SMALL_SIZE + SY(4) + 3*POPUP_ROW_H + SY(4));
+    lv_obj_set_width(hint, POPUP_STATS_W - POPUP_PAD*2);
     lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(hint, &FONT_SMALL, 0);
     lv_obj_set_style_text_color(hint, C_MUTED, 0);
     lv_label_set_text(hint, "Toca para cerrar");
 }

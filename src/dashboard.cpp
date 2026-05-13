@@ -1,4 +1,6 @@
 #include "dashboard.h"
+#include "ui_constants.h"
+#include "config.h"
 
 // ── Paleta ────────────────────────────────────────────────────────────────
 #define C_BG        lv_color_hex(0x0D1117)
@@ -11,20 +13,6 @@
 #define C_WHITE     lv_color_hex(0xEAEAEA)
 #define C_MUTED     lv_color_hex(0x6E7681)
 #define C_BAR_BG    lv_color_hex(0x21262D)
-
-// ── Geometría (480 × 272) ─────────────────────────────────────────────────
-#define MARGIN     4
-#define GAP        4
-#define TOP_BAR_H  22   // barra reloj + autoconsumo
-
-// Ancho de tarjeta: igual que antes
-#define CARD_W  ((480 - 2*MARGIN - GAP) / 2)   // 234
-
-// Alto de tarjeta: descontamos la barra superior
-// 272 - TOP_BAR_H - 2*MARGIN - GAP = 238 → 238/2 = 119
-#define CARD_H  ((272 - TOP_BAR_H - 2*MARGIN - GAP) / 2)   // 119
-
-#define PAD     8   // padding interno
 
 // ── Punteros a widgets que se actualizan ──────────────────────────────────
 static lv_obj_t *lbl_solar_val, *lbl_solar_sub;
@@ -41,23 +29,22 @@ static lv_obj_t* make_card(lv_obj_t* parent, int x, int y,
 {
     lv_obj_t* card = lv_obj_create(parent);
     lv_obj_set_pos(card, x, y);
-    lv_obj_set_size(card, CARD_W, CARD_H);
+    lv_obj_set_size(card, DASH_CARD_W, DASH_CARD_H);
     lv_obj_set_style_bg_color(card, C_CARD, 0);
     lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
     lv_obj_set_style_border_color(card, accent, 0);
-    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_border_width(card, UI_BORDER, 0);
     lv_obj_set_style_border_opa(card, LV_OPA_40, 0);
-    lv_obj_set_style_radius(card, 10, 0);
-    lv_obj_set_style_pad_all(card, PAD, 0);
+    lv_obj_set_style_radius(card, UI_RADIUS, 0);
+    lv_obj_set_style_pad_all(card, UI_PAD, 0);
     lv_obj_set_scrollbar_mode(card, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Título
     lv_obj_t* lbl = lv_label_create(card);
-    lv_label_set_text(lbl, title);
     lv_obj_set_pos(lbl, 0, 0);
     lv_obj_set_style_text_color(lbl, accent, 0);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
-
+    lv_obj_set_style_text_font(lbl, &FONT_NORMAL, 0);
+    lv_label_set_text(lbl, title);
     return card;
 }
 
@@ -83,66 +70,74 @@ void dashboard_init(lv_obj_t* parent) {
     // ── Barra superior ────────────────────────────────────────────────────
     lv_obj_t* topbar = lv_obj_create(scr);
     lv_obj_set_pos(topbar, 0, 0);
-    lv_obj_set_size(topbar, 480, TOP_BAR_H);
+    lv_obj_set_size(topbar, SCREEN_WIDTH, TOP_BAR_H);
     lv_obj_set_style_bg_color(topbar, lv_color_hex(0x0A0F14), 0);
     lv_obj_set_style_bg_opa(topbar, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(topbar, 0, 0);
-    lv_obj_set_style_pad_hor(topbar, MARGIN, 0);
-    lv_obj_set_style_pad_ver(topbar, 3, 0);
+    lv_obj_set_style_pad_hor(topbar, UI_MARGIN, 0);
+    lv_obj_set_style_pad_ver(topbar, SY(3), 0);
     lv_obj_remove_flag(topbar, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Reloj (izquierda)
     lbl_clock = lv_label_create(topbar);
     lv_obj_set_pos(lbl_clock, 0, 0);
-    lv_obj_set_style_text_font(lbl_clock, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(lbl_clock, &FONT_NORMAL, 0);
     lv_obj_set_style_text_color(lbl_clock, C_MUTED, 0);
     lv_label_set_text(lbl_clock, "--:--:--");
 
-    // Autoconsumo (derecha): label de porcentaje
     lbl_selfcon = lv_label_create(topbar);
-    lv_obj_set_style_text_font(lbl_selfcon, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(lbl_selfcon, &FONT_NORMAL, 0);
     lv_obj_set_style_text_color(lbl_selfcon, C_WHITE, 0);
     lv_label_set_text(lbl_selfcon, "Autoconsumo --%");
     lv_obj_align(lbl_selfcon, LV_ALIGN_RIGHT_MID, 0, 0);
 
-    // ── Posiciones Y ajustadas (desplazadas TOP_BAR_H hacia abajo) ────────
-    int x0 = MARGIN;
-    int x1 = MARGIN + CARD_W + GAP;
-    int y0 = TOP_BAR_H + MARGIN;
-    int y1 = TOP_BAR_H + MARGIN + CARD_H + GAP;
+    // ── Posiciones de tarjetas ────────────────────────────────────────────
+    int x0 = UI_MARGIN;
+    int x1 = UI_MARGIN + DASH_CARD_W + UI_GAP;
+    int y0 = TOP_BAR_H + UI_MARGIN;
+    int y1 = TOP_BAR_H + UI_MARGIN + DASH_CARD_H + UI_GAP;
+
+    // Posiciones internas relativas al tamaño de tarjeta
+    int val_y  = SY(20);
+    int sub_y  = DASH_CARD_H - UI_PAD*2 - FONT_SMALL_SIZE - SY(4);
+    int soc_y  = SY(16);
+    int bar_y  = soc_y + FONT_LARGE_SIZE + SY(6);
+    int pwr_y  = bar_y + SS(12) + SY(4);
+    int bsub_y = pwr_y + FONT_NORMAL_SIZE + SY(2);
 
     // ── Tarjeta SOLAR ─────────────────────────────────────────────────────
     lv_obj_t* c_solar = make_card(scr, x0, y0, LV_SYMBOL_CHARGE " SOLAR", C_SOLAR);
-    lbl_solar_val = make_label(c_solar, 0, 20, &lv_font_montserrat_28, C_WHITE, "--- W");
-    lbl_solar_sub = make_label(c_solar, 0, 82, &lv_font_montserrat_14, C_MUTED,
+    lbl_solar_val = make_label(c_solar, 0, val_y, &FONT_LARGE, C_WHITE, "--- W");
+    lbl_solar_sub = make_label(c_solar, 0, sub_y, &FONT_SMALL, C_MUTED,
                                "PV1: --- W   PV2: --- W");
 
     // ── Tarjeta RED ───────────────────────────────────────────────────────
     lv_obj_t* c_grid = make_card(scr, x1, y0, LV_SYMBOL_WIFI " RED", C_GRID);
-    lbl_grid_val = make_label(c_grid, 0, 20, &lv_font_montserrat_28, C_WHITE, "--- W");
-    lbl_grid_sub = make_label(c_grid, 0, 82, &lv_font_montserrat_14, C_MUTED, "--");
+    lbl_grid_val = make_label(c_grid, 0, val_y, &FONT_LARGE, C_WHITE, "--- W");
+    lbl_grid_sub = make_label(c_grid, 0, sub_y, &FONT_SMALL, C_MUTED, "--");
 
     // ── Tarjeta BATERÍA ───────────────────────────────────────────────────
-    lv_obj_t* c_batt = make_card(scr, x0, y1, LV_SYMBOL_BATTERY_FULL " BATERIA", C_BATT_OK);
-    lbl_batt_soc = make_label(c_batt, 0, 16, &lv_font_montserrat_28, C_WHITE, "--%");
+    lv_obj_t* c_batt = make_card(scr, x0, y1,
+                                  LV_SYMBOL_BATTERY_FULL " BATERIA", C_BATT_OK);
+    lbl_batt_soc = make_label(c_batt, 0, soc_y, &FONT_LARGE, C_WHITE, "--%");
 
     bar_batt = lv_bar_create(c_batt);
-    lv_obj_set_pos(bar_batt, 0, 52);
-    lv_obj_set_size(bar_batt, CARD_W - PAD * 2, 12);
+    lv_obj_set_pos(bar_batt, 0, bar_y);
+    lv_obj_set_size(bar_batt, DASH_CARD_W - UI_PAD*2, SS(12));
     lv_bar_set_range(bar_batt, 0, 100);
     lv_bar_set_value(bar_batt, 0, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(bar_batt, C_BAR_BG,  LV_PART_MAIN);
     lv_obj_set_style_bg_color(bar_batt, C_BATT_OK, LV_PART_INDICATOR);
-    lv_obj_set_style_radius(bar_batt, 6, LV_PART_MAIN);
-    lv_obj_set_style_radius(bar_batt, 6, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(bar_batt, SS(6), LV_PART_MAIN);
+    lv_obj_set_style_radius(bar_batt, SS(6), LV_PART_INDICATOR);
 
-    lbl_batt_pwr = make_label(c_batt, 0, 70, &lv_font_montserrat_14, C_WHITE, "--- W");
-    lbl_batt_sub = make_label(c_batt, 0, 88, &lv_font_montserrat_14, C_MUTED, "--");
+    lbl_batt_pwr = make_label(c_batt, 0, pwr_y,  &FONT_NORMAL, C_WHITE, "--- W");
+    lbl_batt_sub = make_label(c_batt, 0, bsub_y, &FONT_SMALL,  C_MUTED, "--");
 
     // ── Tarjeta CARGA ─────────────────────────────────────────────────────
     lv_obj_t* c_load = make_card(scr, x1, y1, LV_SYMBOL_HOME " CARGA", C_LOAD);
-    make_label(c_load, 0, 16, &lv_font_montserrat_14, C_MUTED, "Consumo actual");
-    lbl_load_val = make_label(c_load, 0, 38, &lv_font_montserrat_28, C_WHITE, "--- W");
+    make_label(c_load, 0, soc_y, &FONT_SMALL, C_MUTED, "Consumo actual");
+    lbl_load_val = make_label(c_load, 0, soc_y + FONT_SMALL_SIZE + SY(6),
+                               &FONT_LARGE, C_WHITE, "--- W");
 }
 
 // ── Actualización de datos ────────────────────────────────────────────────
