@@ -202,17 +202,12 @@ static void load_and_render(int offset) {
     // Días anteriores: último registro del día en DataStore
     uint32_t dep = day_epoch_from_offset(offset);
     Record5Min rec{};
-    if (Cache.getLastOfDay(dep, rec)) {
-        DailyStats d = record_to_stats(rec);
+    DailyRecord dr{};
+    if (Cache.getDaily(dep, dr)) {
+        DailyStats d = daily_record_to_stats(dr);
         render_stats(d.pv_kwh, d.export_kwh, d.import_kwh,
-                     d.load_kwh, d.batt_charge_kwh, d.batt_discharge_kwh);
+                    d.load_kwh, d.batt_charge_kwh, d.batt_discharge_kwh);
     } else {
-        for (int i = 0; i < 3; i++) {
-            lv_arc_set_angles(con_arcs[i], 270, 270);
-            lv_arc_set_angles(pro_arcs[i], 270, 270);
-        }
-        lv_label_set_text(con_total_lbl, "--\nkWh");
-        lv_label_set_text(pro_total_lbl, "--\nkWh");
         lv_obj_remove_flag(s_no_data, LV_OBJ_FLAG_HIDDEN);
     }
 }

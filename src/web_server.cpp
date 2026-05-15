@@ -696,6 +696,18 @@ const pwrChart = new Chart(document.getElementById('chart-pwr'), {
     },
     plugins: {
       ...commonOpts.plugins,
+      tooltip: {
+        ...commonOpts.plugins.tooltip,
+        callbacks: {
+          afterBody: (items) => {
+            const ds = pwrChart.data.datasets[items[0].datasetIndex];
+            // El dataset no tiene n directamente; lo guardamos aparte
+            const h = items[0].dataIndex;
+            const n = window._hourly_n ? window._hourly_n[h] : null;
+            return n !== null ? `Muestras: ${n}/12` : '';
+          }
+        }
+      }
       annotation: {
         annotations: {
           zeroLine: {
@@ -785,6 +797,9 @@ async function loadDay(dateStr, incremental = false) {
         bdis: data.daily.bdis,
       });
     }
+    
+    window._hourly_n = new Array(24).fill(null);
+    records.forEach(r => { window._hourly_n[r.h] = r.n; });
 
     // Status
     const isInc = incremental && data.new_records > 0;
@@ -973,17 +988,18 @@ static void handle_status() {
     bool has_first = false, has_last = false;
     has_last = Store.getLastRecord(last);
 
-    char json[256];
+    char json[512];
     snprintf(json, sizeof(json),
-        "{\"records\":%lu,\"capacity\":%lu,\"days_stored\":%lu,"
-        "\"oldest\":\"%s\",\"newest\":\"%s\","
+        "{\"raw\":{\"count\":%lu,\"capacity\":%lu},"
+        "\"hourly\":{\"count\":%lu,\"capacity\":17520},"
+        "\"daily\":{\"count\":%lu,\"capacity\":730},"
+        "\"psram_free_kb\":%lu,"
         "\"wifi_rssi\":%d,\"ip\":\"%s\"}",
-        (unsigned long)Store.getCount(),
-        (unsigned long)Store.getCapacity(),
-        (unsigned long)Store.getDaysStored(),
-        has_last ? epoch_to_date(last.timestamp - 
-            (Store.getCount()-1)*300).c_str() : "N/A",
-        has_last ? epoch_to_date(last.timestamp).c_str() : "N/A",
+        (unsigned long)Store.getRawCount(),
+        (unsigned long)201600,
+        (unsigned long)Store.getHourlyCount(),
+        (unsigned long)Store.getDailyCount(),
+        (unsigned long)ESP.getFreePsram() / 1024,
         (int)WiFi.RSSI(),
         WiFi.localIP().toString().c_str());
 
@@ -1017,18 +1033,22 @@ static void handle_history() {
 
         bool first = true;
         for (uint32_t d = from_ep; d <= to_ep; d += 86400) {
-            Record5Min rec{};
-            if (!Store.getLastOfDay(d, rec)) continue;
-            DailyStats ds = record_to_stats(rec);
+            DailyRecord dr{};
+            if (!Cache.getDaily(d, dr)) continue;
+            DailyStats ds = daily_record_to_stats(dr);
+
             char buf[256];
             snprintf(buf, sizeof(buf),
                 "%s{\"date\":\"%s\","
                 "\"pv\":%.2f,\"export\":%.2f,\"import\":%.2f,"
-                "\"load\":%.2f,\"bchg\":%.2f,\"bdis\":%.2f}",
+                "\"load\":%.2f,\"bchg\":%.2f,\"bdis\":%.2f,"
+                "\"soc_start\":%d,\"soc_end\":%d,\"complete\":%s}",
                 first ? "" : ",",
                 epoch_to_date(d).c_str(),
                 ds.pv_kwh, ds.export_kwh, ds.import_kwh,
-                ds.load_kwh, ds.batt_charge_kwh, ds.batt_discharge_kwh);
+                ds.load_kwh, ds.batt_charge_kwh, ds.batt_discharge_kwh,
+                dr.soc_start, dr.soc_end,
+                (dr.flags & 0x02) ? "true" : "false");   // bit1 = día completo
             server.sendContent(buf);
             first = false;
         }
@@ -1064,8 +1084,7 @@ static void handle_history() {
             from_ts = (uint32_t)server.arg("from_ts").toInt();
 
         uint32_t  count_out = 0;
-        // Leer desde cache PSRAM si disponible, evita leer LittleFS
-        const Record5Min* recs = Cache.getDayRecs(dep, count_out);
+        const Record5Min* recs = Cache.getRawDay(dep, count_out);
 
         // Filtrar por from_ts y contar cuántos enviaremos
         uint32_t first_idx = 0;
@@ -1077,12 +1096,10 @@ static void handle_history() {
 
         // Último registro del día para los totales diarios
         Record5Min last_rec{};
+        DailyRecord dr{};
         DailyStats daily{};
-        if (count_out > 0 && recs) {
-            last_rec = recs[count_out - 1];
-            daily    = record_to_stats(last_rec);
-        }
-
+        if (Cache.getDaily(dep, dr)) daily = daily_record_to_stats(dr);
+        
         char hdr[256];
         snprintf(hdr, sizeof(hdr),
             "{\"date\":\"%s\",\"granularity\":\"5min\","
@@ -1113,17 +1130,14 @@ static void handle_history() {
         server.sendContent("]}");
     } else {
         // ── hourly (default) ──────────────────────────────────────────────
-        static Record5Min day_buf[300];
-        uint32_t n = Store.readDay(dep, day_buf, 300);
-        HourAgg hours[24];
-        Store.aggregateHourly(day_buf, n, hours);
+        const HourlyRecord* hr = Cache.getHourly(dep);
 
-        // Totales del día: último registro
-        Record5Min last_rec{};
-        DailyStats daily{};
-        if (Store.getLastOfDay(dep, last_rec)) daily = record_to_stats(last_rec);
+        // Último registro del día para totales diarios
+        DailyRecord dr{};
+        DailyStats  daily{};
+        if (Cache.getDaily(dep, dr)) daily = daily_record_to_stats(dr);
 
-        char hdr[128];
+        char hdr[256];
         snprintf(hdr, sizeof(hdr),
             "{\"date\":\"%s\",\"granularity\":\"hourly\","
             "\"daily\":{\"pv\":%.2f,\"exp\":%.2f,\"imp\":%.2f,"
@@ -1135,17 +1149,21 @@ static void handle_history() {
         server.sendContent(hdr);
 
         bool first = true;
-        for (int h = 0; h < 24; h++) {
-            if (!hours[h].valid) continue;
-            char buf[160];
-            snprintf(buf, sizeof(buf),
-                "%s{\"h\":%d,\"pv_w\":%.0f,\"grid_w\":%.0f,"
-                "\"batt_w\":%.0f,\"load_w\":%.0f,\"soc\":%d}",
-                first ? "" : ",",
-                h, hours[h].pv_w, hours[h].grid_w,
-                hours[h].batt_w, hours[h].load_w, hours[h].soc);
-            server.sendContent(buf);
-            first = false;
+        if (hr) {
+            for (int h = 0; h < 24; h++) {
+                if (!(hr[h].flags & 0x01) || hr[h].sample_count == 0) continue;
+                char buf[160];
+                snprintf(buf, sizeof(buf),
+                    "%s{\"h\":%d,\"pv_w\":%d,\"grid_w\":%d,"
+                    "\"batt_w\":%d,\"load_w\":%d,\"soc\":%d,\"n\":%d}",
+                    first ? "" : ",",
+                    h,
+                    hr[h].avg_pv_w, hr[h].avg_grid_w,
+                    hr[h].avg_batt_w, hr[h].avg_load_w,
+                    hr[h].soc_end, hr[h].sample_count);
+                server.sendContent(buf);
+                first = false;
+            }
         }
         server.sendContent("]}");
     }

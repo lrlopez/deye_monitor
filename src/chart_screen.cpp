@@ -195,11 +195,20 @@ static void load_day() {
     if (s_vline)  lv_obj_add_flag(s_vline,  LV_OBJ_FLAG_HIDDEN);
 
     uint32_t dep = day_epoch_from_offset(s_offset);
-    s_day_epoch_loaded = dep;
 
-    // Leer agregación horaria desde cache PSRAM (pre-calculada)
-    // Si no está en cache, la carga automáticamente desde LittleFS
-    if (!Cache.getHourAgg(dep, s_hours)) {
+    // Leer directamente las 24 horas pre-agregadas desde PSRAM
+    const HourlyRecord* hr = Cache.getHourly(dep);
+    if (hr) {
+        // Convertir HourlyRecord → HourAgg para compatibilidad con el resto
+        for (int h = 0; h < 24; h++) {
+            s_hours[h].valid  = (hr[h].flags & 0x01) && hr[h].sample_count > 0;
+            s_hours[h].pv_w   = hr[h].avg_pv_w;
+            s_hours[h].grid_w = hr[h].avg_grid_w;
+            s_hours[h].batt_w = hr[h].avg_batt_w;
+            s_hours[h].load_w = hr[h].avg_load_w;
+            s_hours[h].soc    = hr[h].soc_end;
+        }
+    } else {
         memset(s_hours, 0, sizeof(s_hours));
     }
 

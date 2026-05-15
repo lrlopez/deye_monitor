@@ -14,6 +14,7 @@
 #include "config_screen.h"
 #include "web_server.h"
 #include "telegram.h"
+#include "psram_alloc.h"
 #include "psram_cache.h"
 #include "backlight.h"
 
@@ -121,24 +122,27 @@ static void solarmanTask(void* /*pv*/) {
     DailyStats  local_d;
     uint32_t    last_daily = millis() - POLL_DAILY_MS + POLL_INTERVAL_MS;
 
-    static DailyStats s_hour_snap;
-    static int        s_last_hour = -1;
-    static DailyStats s_prev_daily;   // snapshot del poll anterior
-    static int        s_last_day = -1;
+    // ── Estado de agregación ──────────────────────────────────────────────────
+    static int32_t   s_cur_5min_slot = -1;   // slot actual (epoch/300)
+    static int32_t   s_cur_hour      = -1;   // hora actual
+    static int32_t   s_cur_day       = -1;   // día del mes actual
+    static bool      s_startup_done  = false;
 
-    static bool     s_batt_alerted      = false;
-    static bool     s_solar_on          = false;
-    static bool     s_grid_ok           = true;
-    static int      s_logger_fails      = 0;
-    static uint32_t s_last_batt_alert   = 0;
-    static uint32_t s_last_solar_alert  = 0;
-    static uint32_t s_last_grid_alert   = 0;
-    static uint32_t s_last_logger_alert = 0;
+    // Acumuladores para la hora en curso
+    static float     s_acc_pv   = 0, s_acc_grid = 0;
+    static float     s_acc_batt = 0, s_acc_load = 0;
+    static int       s_acc_n    = 0;
+    static uint8_t   s_acc_soc  = 0;
 
-    static uint32_t s_last_save_epoch    = 0;
-    static bool     s_startup_done       = false;
-    static bool     s_first_save_partial = false;
-    static SessionState  s_session{};
+    // Snapshot de inicio de hora (para calcular energía del periodo)
+    static uint16_t  s_snap_day_pv = 0, s_snap_day_exp = 0;
+    static uint16_t  s_snap_day_imp = 0, s_snap_day_load = 0;
+    static uint16_t  s_snap_day_bchg = 0, s_snap_day_bdis = 0;
+    static bool      s_snap_valid = false;
+
+    // SOC al inicio del día
+    static uint8_t   s_soc_start_of_day = 0;
+    static bool      s_soc_start_set    = false;
 
     for (;;) {
         if (WiFi.status() != WL_CONNECTED) {
@@ -160,131 +164,222 @@ static void solarmanTask(void* /*pv*/) {
                     g_energy_ready = true;
                     xSemaphoreGive(g_mutex);
                 }
-
-                if (!s_startup_done && local_e.valid) {
-                    s_startup_done = true;
-                    Record5Min last{};
-                    if (Store.getLastRecord(last)) {
-                        s_last_save_epoch = last.timestamp;
-                        uint32_t gap = (uint32_t)time(nullptr) - last.timestamp;
-                        if (gap > 600) {   // más de 10 minutos de gap
-                            s_first_save_partial = true;
-                            Serial.printf("[Store] Gap detectado: %lu min sin datos\n",
-                                        (unsigned long)(gap / 60));
-                        }
-                    }
-                }
             }
-            if (millis() - last_daily >= POLL_DAILY_MS) {
-                if (client.fetchDailyStats(local_d)) {
-                    if (xSemaphoreTake(g_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                        g_daily       = local_d;
-                        g_daily_ready = true;
-                        xSemaphoreGive(g_mutex);
-                    }
-                }
-                TelegramConfig tgc = Storage.loadTelegramConfig();
-                uint32_t now_ms    = millis();
+        
 
-                // ── Fallo de logger ───────────────────────────────────────────────────
-                if (!local_e.valid) {
-                    s_logger_fails++;
-                    if (tgc.notify_logger
-                        && s_logger_fails >= 3
-                        && now_ms - s_last_logger_alert > 600000UL) {
-                        Telegram.enqueue(AlertType::LOGGER_FAIL, s_logger_fails);
-                        s_last_logger_alert = now_ms;
-                    }
-                } else {
-                    s_logger_fails = 0;
-                }
+            // ── Alineación a intervalos de 5 minutos ─────────────────────────────────
+            uint32_t now_ep    = (uint32_t)time(nullptr);
+            uint32_t slot_5min = now_ep / 300;           // slot actual (cambia cada 5 min)
 
-                if (!local_e.valid) goto end_alerts;
+            // Esperar NTP válido
+            if (now_ep < 1700000000UL) goto end_record;
 
-                // ── Batería baja / recuperada ─────────────────────────────────────────
-                if (local_e.batt_soc < tgc.batt_threshold) {
-                    if (!s_batt_alerted
-                        && now_ms - s_last_batt_alert > 1800000UL) {
-                        Telegram.enqueue(AlertType::BATT_LOW, local_e.batt_soc);
-                        s_batt_alerted    = true;
-                        s_last_batt_alert = now_ms;
-                    }
-                } else if (local_e.batt_soc > tgc.batt_threshold + 10) {
-                    if (s_batt_alerted
-                        && now_ms - s_last_batt_alert > 1800000UL) {
-                        Telegram.enqueue(AlertType::BATT_RECOVERED, local_e.batt_soc);
-                        s_batt_alerted    = false;
-                        s_last_batt_alert = now_ms;
-                    }
-                }
+            // ── Primer arranque: alinear al próximo slot ──────────────────────────────
+            if (!s_startup_done && local_e.valid && local_d.valid) {
+                s_startup_done = true;
+                s_cur_5min_slot = (int32_t)slot_5min;   // empezar desde el slot actual
 
-                // ── Solar arranca / para ──────────────────────────────────────────────
-                if (tgc.notify_solar
-                    && now_ms - s_last_solar_alert > 300000UL) {
-                    bool pv_active = (local_e.pv_power > 100);
-                    if (pv_active && !s_solar_on) {
-                        Telegram.enqueue(AlertType::SOLAR_START, local_e.pv_power);
-                        s_last_solar_alert = now_ms;
-                    } else if (!pv_active && s_solar_on) {
-                        Telegram.enqueue(AlertType::SOLAR_STOP, 0);
-                        s_last_solar_alert = now_ms;
-                    }
-                    s_solar_on = pv_active;
-                }
+                struct tm now_tm; getLocalTime(&now_tm, 500);
+                s_cur_hour = now_tm.tm_hour;
+                s_cur_day  = now_tm.tm_mday;
 
-                // ── Corte / restauración de red ───────────────────────────────────────
-                if (tgc.notify_grid
-                    && now_ms - s_last_grid_alert > 600000UL) {
-                    // Detectamos corte cuando importamos mucho de golpe sin solar
-                    bool grid_problem = (local_e.grid_power > 3000
-                                        && local_e.pv_power < 100);
-                    if (grid_problem && s_grid_ok) {
-                        Telegram.enqueue(AlertType::GRID_OUTAGE, local_e.grid_power);
-                        s_grid_ok          = false;
-                        s_last_grid_alert  = now_ms;
-                    } else if (!grid_problem && !s_grid_ok) {
-                        Telegram.enqueue(AlertType::GRID_RESTORED, 0);
-                        s_grid_ok         = true;
-                        s_last_grid_alert = now_ms;
-                    }
-                }
+                // Inicializar snapshot de acumulados
+                s_snap_day_pv   = (uint16_t)(local_d.pv_kwh          * 10.0f + 0.5f);
+                s_snap_day_exp  = (uint16_t)(local_d.export_kwh       * 10.0f + 0.5f);
+                s_snap_day_imp  = (uint16_t)(local_d.import_kwh       * 10.0f + 0.5f);
+                s_snap_day_load = (uint16_t)(local_d.load_kwh         * 10.0f + 0.5f);
+                s_snap_day_bchg = (uint16_t)(local_d.batt_charge_kwh  * 10.0f + 0.5f);
+                s_snap_day_bdis = (uint16_t)(local_d.batt_discharge_kwh*10.0f + 0.5f);
+                s_snap_valid    = true;
 
-                end_alerts:;
-                                
-                // ── Guardar registro cada 5 minutos ──────────────────────────────────────
-                uint32_t now_ep = (uint32_t)time(nullptr);
-                if (s_startup_done && local_e.valid && local_d.valid &&
-                    now_ep - s_last_save_epoch >= 300) {
+                s_soc_start_of_day = (uint8_t)local_e.batt_soc;
+                s_soc_start_set    = true;
+
+                Serial.printf("[Record] Startup: slot=%lu hora=%d dia=%d\n",
+                            (unsigned long)slot_5min, s_cur_hour, s_cur_day);
+                goto end_record;
+            }
+
+            if (!s_startup_done) goto end_record;
+            if (!local_e.valid || !local_d.valid) goto end_record;
+
+            {
+                struct tm now_tm; getLocalTime(&now_tm, 500);
+                int new_hour = now_tm.tm_hour;
+                int new_day  = now_tm.tm_mday;
+
+                // Acumular para la media de la hora en curso
+                s_acc_pv   += local_e.pv_power;
+                s_acc_grid += local_e.grid_power;
+                s_acc_batt += local_e.batt_power;
+                s_acc_load += local_e.load_power;
+                s_acc_soc   = (uint8_t)local_e.batt_soc;
+                s_acc_n++;
+
+                // ── Nuevo slot de 5 minutos (grabar Record5Min en el límite exacto) ───
+                if ((int32_t)slot_5min != s_cur_5min_slot) {
+                    s_cur_5min_slot = (int32_t)slot_5min;
+
+                    // El timestamp del registro es el inicio del slot completado
+                    uint32_t record_ts = slot_5min * 300;   // inicio del slot actual
 
                     Record5Min r{};
-                    r.timestamp  = now_ep;
-                    r.pv_w       = (int16_t)constrain(local_e.pv_power,  -32767, 32767);
-                    r.grid_w     = (int16_t)constrain(local_e.grid_power, -32767, 32767);
-                    r.batt_w     = (int16_t)constrain(local_e.batt_power, -32767, 32767);
-                    r.load_w     = (int16_t)constrain(local_e.load_power, -32767, 32767);
-
-                    // Totales del día en 0.1 kWh (los registros del inversor ya vienen así)
-                    r.day_pv     = (uint16_t)(local_d.pv_kwh             * 10.0f + 0.5f);
-                    r.day_export = (uint16_t)(local_d.export_kwh          * 10.0f + 0.5f);
-                    r.day_import = (uint16_t)(local_d.import_kwh          * 10.0f + 0.5f);
-                    r.day_load   = (uint16_t)(local_d.load_kwh            * 10.0f + 0.5f);
-                    r.day_bchg   = (uint16_t)(local_d.batt_charge_kwh     * 10.0f + 0.5f);
-                    r.day_bdis   = (uint16_t)(local_d.batt_discharge_kwh  * 10.0f + 0.5f);
+                    r.timestamp  = record_ts;
+                    r.pv_w       = (int16_t)constrain(local_e.pv_power,   -32767, 32767);
+                    r.grid_w     = (int16_t)constrain(local_e.grid_power,  -32767, 32767);
+                    r.batt_w     = (int16_t)constrain(local_e.batt_power,  -32767, 32767);
+                    r.load_w     = (int16_t)constrain(local_e.load_power,  -32767, 32767);
+                    r.day_pv     = (uint16_t)(local_d.pv_kwh          * 10.0f + 0.5f);
+                    r.day_export = (uint16_t)(local_d.export_kwh       * 10.0f + 0.5f);
+                    r.day_import = (uint16_t)(local_d.import_kwh       * 10.0f + 0.5f);
+                    r.day_load   = (uint16_t)(local_d.load_kwh         * 10.0f + 0.5f);
+                    r.day_bchg   = (uint16_t)(local_d.batt_charge_kwh  * 10.0f + 0.5f);
+                    r.day_bdis   = (uint16_t)(local_d.batt_discharge_kwh*10.0f + 0.5f);
                     r.soc        = (uint8_t)local_e.batt_soc;
-                    r.flags      = 0x01;   // válido
-                    if (s_first_save_partial) { r.flags |= 0x02; s_first_save_partial = false; }
-                    r.extra[0] = r.extra[1] = 0;
+                    r.flags      = 0x01;
+                    r.extra[0]   = r.extra[1] = 0;
 
                     Store.push(r);
-                    Cache.push(r);
-                    s_last_save_epoch = now_ep;
+                    Cache.pushRaw(r);
 
-                    // Sesión: guardar epoch para detección de gaps en el próximo arranque
-                    SessionState ss{now_ep, true};
+                    // Guardar sesión para detección de gaps
+                    SessionState ss{record_ts, true};
                     Storage.saveSessionState(ss);
+
+                    // Actualizar snapshot de acumulados si ha pasado la hora
+                    // (el snapshot se actualiza al cerrar la hora, no aquí)
                 }
-                last_daily = millis();
+
+                // ── Cambio de hora: finalizar HourlyRecord ────────────────────────────
+                if (new_hour != s_cur_hour) {
+                    if (s_acc_n > 0 && s_snap_valid) {
+                        // Medianoche del día actual
+                        struct tm mid = now_tm;
+                        // Si new_hour == 0, la hora que cierra es la 23 de ayer
+                        if (new_hour == 0) mid.tm_mday--;   // mktime normaliza
+                        mid.tm_hour = s_cur_hour;
+                        mid.tm_min = 0; mid.tm_sec = 0; mid.tm_isdst = -1;
+                        uint32_t hour_ep = (uint32_t)mktime(&mid);
+
+                        // Acumulados al final de la hora (último valor leído)
+                        uint16_t cur_pv   = (uint16_t)(local_d.pv_kwh          * 10.0f + 0.5f);
+                        uint16_t cur_exp  = (uint16_t)(local_d.export_kwh       * 10.0f + 0.5f);
+                        uint16_t cur_imp  = (uint16_t)(local_d.import_kwh       * 10.0f + 0.5f);
+                        uint16_t cur_load = (uint16_t)(local_d.load_kwh         * 10.0f + 0.5f);
+                        uint16_t cur_bchg = (uint16_t)(local_d.batt_charge_kwh  * 10.0f + 0.5f);
+                        uint16_t cur_bdis = (uint16_t)(local_d.batt_discharge_kwh*10.0f + 0.5f);
+
+                        HourlyRecord hr{};
+                        hr.hour_epoch   = hour_ep;
+                        hr.avg_pv_w     = (int16_t)(s_acc_pv   / s_acc_n);
+                        hr.avg_grid_w   = (int16_t)(s_acc_grid  / s_acc_n);
+                        hr.avg_batt_w   = (int16_t)(s_acc_batt  / s_acc_n);
+                        hr.avg_load_w   = (int16_t)(s_acc_load  / s_acc_n);
+                        hr.soc_end       = s_acc_soc;
+                        hr.sample_count  = (uint8_t)min(s_acc_n, 255);
+                        hr.flags         = 0x01;
+                        // Acumulados diarios al final de la hora
+                        hr.day_pv     = cur_pv;
+                        hr.day_export = cur_exp;
+                        hr.day_import = cur_imp;
+                        hr.day_load   = cur_load;
+                        hr.day_bchg   = cur_bchg;
+                        hr.day_bdis   = cur_bdis;
+
+                        Cache.pushHourly(hr);   // guarda en flash + PSRAM
+
+                        // Nuevo snapshot para la siguiente hora
+                        s_snap_day_pv   = cur_pv;
+                        s_snap_day_exp  = cur_exp;
+                        s_snap_day_imp  = cur_imp;
+                        s_snap_day_load = cur_load;
+                        s_snap_day_bchg = cur_bchg;
+                        s_snap_day_bdis = cur_bdis;
+                    }
+
+                    // Resetear acumuladores
+                    s_acc_pv = s_acc_grid = s_acc_batt = s_acc_load = 0;
+                    s_acc_n  = 0;
+                    s_cur_hour = new_hour;
+                }
+
+                // ── Cambio de día: finalizar DailyRecord ──────────────────────────────
+                if (new_day != s_cur_day) {
+                    // Medianoche del día que acaba de terminar
+                    struct tm yesterday = now_tm;
+                    yesterday.tm_mday--;
+                    yesterday.tm_hour = 0; yesterday.tm_min = 0;
+                    yesterday.tm_sec  = 0; yesterday.tm_isdst = -1;
+                    uint32_t dep_yesterday = (uint32_t)mktime(&yesterday);
+
+                    // Los registros del inversor se resetean a medianoche
+                    // El último valor antes del reset es el total del día
+                    HourlyRecord last_hr{};
+                    if (Store.getLastHourly(dep_yesterday, last_hr)) {
+                        DailyRecord dr{};
+                        dr.day_epoch   = dep_yesterday;
+                        dr.pv_10wh     = last_hr.day_pv;
+                        dr.export_10wh = last_hr.day_export;
+                        dr.import_10wh = last_hr.day_import;
+                        dr.load_10wh   = last_hr.day_load;
+                        dr.bchg_10wh   = last_hr.day_bchg;
+                        dr.bdis_10wh   = last_hr.day_bdis;
+                        dr.soc_start   = s_soc_start_of_day;
+                        dr.soc_end     = last_hr.soc_end;
+                        dr.flags       = 0x03;   // válido + completo
+                        Cache.pushDaily(dr);
+                    }
+
+                    // Nuevo día
+                    s_soc_start_of_day = (uint8_t)local_e.batt_soc;
+                    s_soc_start_set    = true;
+                    s_cur_day          = new_day;
+
+                    // Actualizar DailyRecord del día actual también (parcial)
+                    {
+                        struct tm today_tm = now_tm;
+                        today_tm.tm_hour = 0; today_tm.tm_min = 0;
+                        today_tm.tm_sec  = 0; today_tm.tm_isdst = -1;
+                        uint32_t dep_today = (uint32_t)mktime(&today_tm);
+
+                        DailyRecord dr_today{};
+                        dr_today.day_epoch   = dep_today;
+                        dr_today.pv_10wh     = (uint16_t)(local_d.pv_kwh          * 10.0f + 0.5f);
+                        dr_today.export_10wh = (uint16_t)(local_d.export_kwh       * 10.0f + 0.5f);
+                        dr_today.import_10wh = (uint16_t)(local_d.import_kwh       * 10.0f + 0.5f);
+                        dr_today.load_10wh   = (uint16_t)(local_d.load_kwh         * 10.0f + 0.5f);
+                        dr_today.bchg_10wh   = (uint16_t)(local_d.batt_charge_kwh  * 10.0f + 0.5f);
+                        dr_today.bdis_10wh   = (uint16_t)(local_d.batt_discharge_kwh*10.0f + 0.5f);
+                        dr_today.soc_start   = s_soc_start_of_day;
+                        dr_today.soc_end     = (uint8_t)local_e.batt_soc;
+                        dr_today.flags       = 0x01;   // válido, no completo
+                        Cache.pushDaily(dr_today);
+                    }
+                } else {
+                    // Mismo día: actualizar DailyRecord parcial cada hora
+                    if (new_hour != s_cur_hour) {
+                        struct tm today_tm = now_tm;
+                        today_tm.tm_hour = 0; today_tm.tm_min = 0;
+                        today_tm.tm_sec  = 0; today_tm.tm_isdst = -1;
+                        uint32_t dep_today = (uint32_t)mktime(&today_tm);
+
+                        DailyRecord dr_today{};
+                        dr_today.day_epoch   = dep_today;
+                        dr_today.pv_10wh     = (uint16_t)(local_d.pv_kwh          * 10.0f + 0.5f);
+                        dr_today.export_10wh = (uint16_t)(local_d.export_kwh       * 10.0f + 0.5f);
+                        dr_today.import_10wh = (uint16_t)(local_d.import_kwh       * 10.0f + 0.5f);
+                        dr_today.load_10wh   = (uint16_t)(local_d.load_kwh         * 10.0f + 0.5f);
+                        dr_today.bchg_10wh   = (uint16_t)(local_d.batt_charge_kwh  * 10.0f + 0.5f);
+                        dr_today.bdis_10wh   = (uint16_t)(local_d.batt_discharge_kwh*10.0f + 0.5f);
+                        dr_today.soc_start   = s_soc_start_of_day;
+                        dr_today.soc_end     = (uint8_t)local_e.batt_soc;
+                        dr_today.flags       = 0x01;
+                        Cache.pushDaily(dr_today);
+                    }
+                }
             }
+
+            end_record:;
         }
 
         vTaskDelay(pdMS_TO_TICKS(POLL_INTERVAL_MS));

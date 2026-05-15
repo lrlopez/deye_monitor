@@ -2,52 +2,63 @@
 #include <Arduino.h>
 #include <freertos/semphr.h>
 #include "data_store.h"
-#include "psram_alloc.h"
 
-// Cache en PSRAM de los últimos CACHE_DAYS días
-// Evita leer LittleFS para gráficas y estadísticas recientes
-//
-// Capacidad: 7 días × 288 registros × 32 bytes = 64,512 bytes en PSRAM
-// Acceso: O(1) para hoy, O(log n) para días recientes
+// ── Raw cache (90 días) ───────────────────────────────────────────────────
+constexpr int    CACHE_RAW_DAYS   = 90;
+constexpr int    RECS_PER_DAY     = 288;
+constexpr size_t CACHE_RAW_SIZE   = (size_t)CACHE_RAW_DAYS * RECS_PER_DAY * sizeof(Record5Min);
 
-constexpr int    CACHE_DAYS     = 7;
-constexpr int    RECS_PER_DAY   = 288;
-constexpr size_t CACHE_BUF_SIZE = CACHE_DAYS * RECS_PER_DAY * sizeof(Record5Min);
+// ── Hourly cache (90 días) ────────────────────────────────────────────────
+constexpr int    CACHE_HRLY_DAYS  = 90;
+constexpr size_t CACHE_HRLY_SIZE  = (size_t)CACHE_HRLY_DAYS * 24 * sizeof(HourlyRecord);
 
-struct CachedDay {
+// ── Daily cache (730 días — TODO en PSRAM, solo 23 KB) ───────────────────
+constexpr int    CACHE_DAY_MAX    = 730;
+constexpr size_t CACHE_DAY_SIZE   = (size_t)CACHE_DAY_MAX * sizeof(DailyRecord);
+
+struct CachedRawDay {
+    uint32_t day_epoch;
+    uint16_t count;
+    bool     valid;
+    bool     loaded;
+    Record5Min last;
+};
+
+struct CachedHrlyDay {
     uint32_t    day_epoch;
-    uint16_t    count;        // registros válidos (0–288)
     bool        valid;
-    HourAgg     hours[24];    // agregación horaria pre-calculada
-    Record5Min  last;         // último registro del día (para totales)
+    bool        loaded;
+    uint8_t     hours_valid;   // cuántas horas tienen datos
+    HourlyRecord hours[24];
 };
 
 class PsramCache {
 public:
     static PsramCache& instance();
 
-    // Llamar en setup() tras DataStore.begin()
     bool begin();
 
-    // Añadir un registro recién grabado (desde solarmanTask)
-    void push(const Record5Min& r);
+    // ── Raw ───────────────────────────────────────────────────────────────
+    const Record5Min* getRawDay(uint32_t dep, uint32_t& count_out);
+    bool getLastRaw(uint32_t dep, Record5Min& out);
+    void pushRaw(const Record5Min& r);
 
-    // Leer registros de 5 min de un día
-    // Devuelve puntero directo al buffer PSRAM (sin copia) o nullptr
-    // IMPORTANTE: usar bajo mutex (ver lock/unlock)
-    const Record5Min* getDayRecs(uint32_t day_epoch, uint32_t& count_out);
+    // ── Hourly (acceso O(1) desde PSRAM) ──────────────────────────────────
+    // Devuelve puntero directo a array de 24 HourlyRecord en PSRAM
+    // null si no hay datos para ese día
+    const HourlyRecord* getHourly(uint32_t dep);
+    void pushHourly(const HourlyRecord& r);
+    void invalidateHourly(uint32_t dep);   // forzar recarga desde flash
 
-    // Acceso a agregación horaria pre-calculada (sin mutex necesario para lectura)
-    bool getHourAgg(uint32_t day_epoch, HourAgg out[24]);
+    // ── Daily (toda la historia en PSRAM, acceso O(1)) ────────────────────
+    bool getDaily(uint32_t dep, DailyRecord& out);
+    void pushDaily(const DailyRecord& r);
+    // Para stats/summary: acceso directo al array ordenado
+    const DailyRecord* getDailyArray() const { return _day_buf; }
+    uint32_t           getDailyCount()  const { return _day_count; }
 
-    // Último registro de un día (totales diarios)
-    bool getLastOfDay(uint32_t day_epoch, Record5Min& out);
-
-    // Mutex para acceso seguro al buffer de registros
-    void lock();
-    void unlock();
-
-    // Estadísticas
+    void lock()   { xSemaphoreTake(_mutex, portMAX_DELAY); }
+    void unlock() { xSemaphoreGive(_mutex); }
     void printStats();
 
 private:
@@ -55,14 +66,30 @@ private:
 
     SemaphoreHandle_t _mutex = nullptr;
 
-    // Buffer principal en PSRAM: CACHE_DAYS slots de RECS_PER_DAY registros
-    Record5Min* _buf       = nullptr;   // CACHE_BUF_SIZE bytes en PSRAM
-    CachedDay   _days[CACHE_DAYS] = {};  // metadatos en SRAM (pequeño)
+    // Raw
+    Record5Min*    _raw_buf  = nullptr;
+    CachedRawDay*  _raw_days = nullptr;
 
-    int _slot_for_day(uint32_t day_epoch) const;
-    int _oldest_slot()                    const;
-    void _recalc_hour_agg(int slot);
-    void _load_from_store(uint32_t day_epoch);
+    // Hourly
+    HourlyRecord*  _hrly_buf  = nullptr;
+    CachedHrlyDay* _hrly_days = nullptr;
+
+    // Daily (array plano ordenado cronológicamente)
+    DailyRecord*   _day_buf   = nullptr;
+    uint32_t       _day_count = 0;
+
+    int  _raw_slot_for(uint32_t dep)  const;
+    int  _raw_oldest_slot()           const;
+    void _raw_load(uint32_t dep);
+
+    int  _hrly_slot_for(uint32_t dep) const;
+    int  _hrly_oldest_slot()          const;
+    void _hrly_load(uint32_t dep);
+
+    void _day_load_all();
+    int  _day_find(uint32_t dep) const;
+
+    static void _bg_task(void* pv);
 };
 
 #define Cache PsramCache::instance()
