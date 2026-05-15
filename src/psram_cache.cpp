@@ -29,7 +29,7 @@ bool PsramCache::begin() {
                     MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
 
     if (!_raw_buf || !_raw_days || !_hrly_buf || !_hrly_days || !_day_buf) {
-        Serial.println("[Cache] ERROR: PSRAM insuficiente"); return false;
+        Serial0.println("[Cache] ERROR: PSRAM insuficiente"); return false;
     }
 
     memset(_raw_buf,   0, CACHE_RAW_SIZE);
@@ -38,7 +38,7 @@ bool PsramCache::begin() {
     memset(_hrly_days, 0, CACHE_HRLY_DAYS * sizeof(CachedHrlyDay));
     memset(_day_buf,   0, CACHE_DAY_SIZE);
 
-    Serial.printf("[Cache] PSRAM: raw=%uKB hrly=%uKB day=%uKB total=%uKB\n",
+    Serial0.printf("[Cache] PSRAM: raw=%uKB hrly=%uKB day=%uKB total=%uKB\n",
                   (unsigned)(CACHE_RAW_SIZE/1024),
                   (unsigned)(CACHE_HRLY_SIZE/1024),
                   (unsigned)(CACHE_DAY_SIZE/1024),
@@ -82,7 +82,7 @@ void PsramCache::_bg_task(void* pv) {
             vTaskDelay(pdMS_TO_TICKS(30));
         }
     }
-    Serial.println("[Cache] Carga background completada");
+    Serial0.println("[Cache] Carga background completada");
     vTaskDelete(nullptr);
 }
 
@@ -91,7 +91,7 @@ void PsramCache::_bg_task(void* pv) {
 // ═══════════════════════════════════════════════════════════════════════════
 void PsramCache::_day_load_all() {
     _day_count = Store.readAllDaily(_day_buf, CACHE_DAY_MAX);
-    Serial.printf("[Cache] Daily cargado: %lu registros\n",
+    Serial0.printf("[Cache] Daily cargado: %lu registros\n",
                   (unsigned long)_day_count);
 }
 
@@ -270,7 +270,7 @@ void PsramCache::pushRaw(const Record5Min& r) {
 
 void PsramCache::printStats() {
     uint32_t total_psram = CACHE_RAW_SIZE + CACHE_HRLY_SIZE + CACHE_DAY_SIZE;
-    Serial.printf("[Cache] PSRAM total: %u KB | Daily: %lu/%d registros\n",
+    Serial0.printf("[Cache] PSRAM total: %u KB | Daily: %lu/%d registros\n",
                   (unsigned)(total_psram/1024),
                   (unsigned long)_day_count, CACHE_DAY_MAX);
 }

@@ -70,14 +70,14 @@ bool DataStore::readAt(const CircBuf& cb, uint32_t phys,
 bool DataStore::begin() {
     _mutex = xSemaphoreCreateMutex();
     if (!LittleFS.begin(true, "/littlefs", 10, "spiffs")) {
-        Serial.println("[Store] Error montando LittleFS"); return false;
+        Serial0.println("[Store] Error montando LittleFS"); return false;
     }
     size_t total = LittleFS.totalBytes();
-    Serial.printf("[Store] LittleFS: %u KB total, %u KB usados\n",
+    Serial0.printf("[Store] LittleFS: %u KB total, %u KB usados\n",
                   total/1024, (unsigned)LittleFS.usedBytes()/1024);
 
     if (loadMeta()) {
-        Serial.printf("[Store] Meta v2 cargada: raw=%lu hrly=%lu day=%lu\n",
+        Serial0.printf("[Store] Meta v2 cargada: raw=%lu hrly=%lu day=%lu\n",
                       (unsigned long)_raw.count,
                       (unsigned long)_hrly.count,
                       (unsigned long)_day.count);
@@ -96,7 +96,7 @@ bool DataStore::begin() {
     _day.head  = _day.count  = 0;
     saveMeta();
 
-    Serial.printf("[Store] Nuevo: raw=%lu hrly=%lu day=%lu registros\n",
+    Serial0.printf("[Store] Nuevo: raw=%lu hrly=%lu day=%lu registros\n",
                   (unsigned long)_raw.capacity,
                   (unsigned long)_hrly.capacity,
                   (unsigned long)_day.capacity);
@@ -135,7 +135,7 @@ bool DataStore::pushHourly(const HourlyRecord& r) {
     if (ok) saveMeta();
     xSemaphoreGive(_mutex);
 
-    Serial.printf("[Hourly] %08lu guardado: pv=%dW grid=%dW bat=%dW load=%dW soc=%d%% n=%d\n",
+    Serial0.printf("[Hourly] %08lu guardado: pv=%dW grid=%dW bat=%dW load=%dW soc=%d%% n=%d\n",
                   (unsigned long)r.hour_epoch,
                   r.avg_pv_w, r.avg_grid_w, r.avg_batt_w, r.avg_load_w,
                   r.soc_end, r.sample_count);
@@ -170,7 +170,7 @@ bool DataStore::pushDaily(const DailyRecord& r) {
     if (ok) saveMeta();
     xSemaphoreGive(_mutex);
 
-    Serial.printf("[Daily] %08lu guardado: pv=%.1f exp=%.1f imp=%.1f load=%.1f kWh\n",
+    Serial0.printf("[Daily] %08lu guardado: pv=%.1f exp=%.1f imp=%.1f load=%.1f kWh\n",
                   (unsigned long)r.day_epoch,
                   r.pv_10wh/10.0f, r.export_10wh/10.0f,
                   r.import_10wh/10.0f, r.load_10wh/10.0f);

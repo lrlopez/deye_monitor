@@ -116,7 +116,7 @@ static void build_date_str(char* out, size_t max) {
     char time_s[6] = {};
     strncpy(time_s, __TIME__, 5);   // "HH:MM"
 
-    snprintf(out, max, "v%s  ·  %d %s %d  ·  %s",
+    snprintf(out, max, "v%s  -  %d %s %d  -  %s",
              APP_VERSION, day, months_es[month_idx], year, time_s);
 }
 

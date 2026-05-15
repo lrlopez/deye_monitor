@@ -264,37 +264,35 @@ async function refresh() {
     document.getElementById('load-val').textContent = l.load_w + ' W';
 
     // ── Daily donuts ───────────────────────────────────────────────────────
-    if (day) {
+    if (day && day.valid) {
       const pvDirect = Math.max(0,
         day.load_kwh - day.batt_discharge_kwh - day.import_kwh);
       const pvToLoad = Math.max(0,
         day.pv_kwh - day.export_kwh - day.batt_charge_kwh);
 
       const conVals = [pvDirect * 1000,
-                       day.batt_discharge_kwh * 1000,
-                       day.import_kwh * 1000];
+                      day.batt_discharge_kwh * 1000,
+                      day.import_kwh * 1000];
       const proVals = [pvToLoad * 1000,
-                       day.batt_charge_kwh * 1000,
-                       day.export_kwh * 1000];
+                      day.batt_charge_kwh * 1000,
+                      day.export_kwh * 1000];
 
       setDonut(['dc-pv','dc-dis','dc-imp'], conVals, day.load_kwh * 1000);
       setDonut(['dp-load','dp-chg','dp-exp'], proVals, day.pv_kwh * 1000);
 
-      document.getElementById('dc-total').textContent =
-        day.load_kwh.toFixed(1);
-      document.getElementById('dp-total').textContent =
-        day.pv_kwh.toFixed(1);
+      document.getElementById('dc-total').textContent = day.load_kwh.toFixed(1);
+      document.getElementById('dp-total').textContent = day.pv_kwh.toFixed(1);
 
       document.getElementById('dl-con-pv').textContent  = fmt(pvDirect * 1000);
-      document.getElementById('dl-con-dis').textContent =
-        fmt(day.batt_discharge_kwh * 1000);
-      document.getElementById('dl-con-imp').textContent =
-        fmt(day.import_kwh * 1000);
+      document.getElementById('dl-con-dis').textContent = fmt(day.batt_discharge_kwh * 1000);
+      document.getElementById('dl-con-imp').textContent = fmt(day.import_kwh * 1000);
       document.getElementById('dl-pro-load').textContent = fmt(pvToLoad * 1000);
-      document.getElementById('dl-pro-chg').textContent  =
-        fmt(day.batt_charge_kwh * 1000);
-      document.getElementById('dl-pro-exp').textContent  =
-        fmt(day.export_kwh * 1000);
+      document.getElementById('dl-pro-chg').textContent  = fmt(day.batt_charge_kwh * 1000);
+      document.getElementById('dl-pro-exp').textContent  = fmt(day.export_kwh * 1000);
+    } else if (day && !day.valid) {
+      // Datos aún no disponibles — mostrar estado de espera
+      document.getElementById('dc-total').textContent = '...';
+      document.getElementById('dp-total').textContent = '...';
     }
 
     // ── Status bar ────────────────────────────────────────────────────────
@@ -707,7 +705,7 @@ const pwrChart = new Chart(document.getElementById('chart-pwr'), {
             return n !== null ? `Muestras: ${n}/12` : '';
           }
         }
-      }
+      },
       annotation: {
         annotations: {
           zeroLine: {
@@ -940,10 +938,26 @@ static void handle_upload() {
 // ═════════════════════════════════════════════════════════════════════════
 static void handle_api_data() {
     EnergyData e{};
-    DailyStats d{};
     if (s_mutex && xSemaphoreTake(s_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
         if (s_energy) e = *s_energy;
-        if (s_daily)  d = *s_daily;
+        xSemaphoreGive(s_mutex);
+    }
+
+    // ── Daily: leer desde cache PSRAM (fuente primaria) ───────────────────
+    DailyStats d{};
+    time_t now; time(&now);
+    struct tm tm_now; localtime_r(&now, &tm_now);
+    tm_now.tm_hour = 0; tm_now.tm_min = 0;
+    tm_now.tm_sec  = 0; tm_now.tm_isdst = -1;
+    uint32_t today_ep = (uint32_t)mktime(&tm_now);
+
+    DailyRecord dr{};
+    if (Cache.getDaily(today_ep, dr)) {
+        d = daily_record_to_stats(dr);
+    } else if (s_daily && s_mutex &&
+               xSemaphoreTake(s_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        // Fallback al puntero compartido si la cache aún no tiene datos
+        d = *s_daily;
         xSemaphoreGive(s_mutex);
     }
 
@@ -952,11 +966,17 @@ static void handle_api_data() {
         R"({"live":{"pv_w":%d,"pv1_w":%d,"pv2_w":%d,)"
         R"("grid_w":%d,"batt_w":%d,"batt_soc":%d,"load_w":%d},)"
         R"("daily":{"pv_kwh":%.2f,"export_kwh":%.2f,"import_kwh":%.2f,)"
-        R"("load_kwh":%.2f,"batt_charge_kwh":%.2f,"batt_discharge_kwh":%.2f}})",
+        R"("load_kwh":%.2f,"batt_charge_kwh":%.2f,"batt_discharge_kwh":%.2f,)"
+        R"("valid":%s}})",
         (int)e.pv_power, (int)e.pv1_power, (int)e.pv2_power,
         (int)e.grid_power, (int)e.batt_power, (int)e.batt_soc, (int)e.load_power,
         d.pv_kwh, d.export_kwh, d.import_kwh,
-        d.load_kwh, d.batt_charge_kwh, d.batt_discharge_kwh);
+        d.load_kwh, d.batt_charge_kwh, d.batt_discharge_kwh,
+        d.valid ? "true" : "false");
+
+    Serial0.printf("[API] daily valid=%d pv=%.2f load=%.2f cache_day=%lu\n",
+          d.valid, d.pv_kwh, d.load_kwh,
+          (unsigned long)today_ep);
 
     server.sendHeader("Access-Control-Allow-Origin", "*");
     server.send(200, "application/json", json);

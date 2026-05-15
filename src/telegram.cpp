@@ -108,7 +108,7 @@ bool TelegramNotifier::sendMessage(const String& text) {
 
     time_t now; time(&now);
     if (now < 1700000000UL) {
-        Serial.println("[Telegram] NTP no sincronizado");
+        Serial0.println("[Telegram] NTP no sincronizado");
         return false;
     }
 

@@ -120,54 +120,39 @@ static int16_t delta_wh(float cur, float prev) {
 
 // ── Tarea de red (Core 0) ─────────────────────────────────────────────────
 static void solarmanTask(void* /*pv*/) {
-    // Usamos g_cfg que ya fue rellenado en setup() desde NVS
     SolarmanClient client(g_cfg.logger_ip, LOGGER_PORT,
                           g_cfg.logger_serial, MODBUS_UNIT_ID);
-    EnergyData  local_e;
-    DailyStats  local_d;
-    uint32_t    last_daily = millis() - POLL_DAILY_MS + POLL_INTERVAL_MS;
+    EnergyData  local_e{};
+    DailyStats  local_d{};
 
-    // ── Estado de agregación ──────────────────────────────────────────────────
-    static int32_t   s_cur_5min_slot = -1;   // slot actual (epoch/300)
-    static int32_t   s_cur_hour      = -1;   // hora actual
-    static int32_t   s_cur_day       = -1;   // día del mes actual
-    static bool      s_startup_done  = false;
+    static int32_t  s_cur_5min_slot = -1;
+    static int32_t  s_cur_hour      = -1;
+    static int32_t  s_cur_day       = -1;
+    static bool     s_startup_done  = false;
 
-    // Acumuladores para la hora en curso
-    static float     s_acc_pv   = 0, s_acc_grid = 0;
-    static float     s_acc_batt = 0, s_acc_load = 0;
-    static int       s_acc_n    = 0;
-    static uint8_t   s_acc_soc  = 0;
+    static float    s_acc_pv = 0, s_acc_grid = 0;
+    static float    s_acc_batt = 0, s_acc_load = 0;
+    static int      s_acc_n   = 0;
+    static uint8_t  s_acc_soc = 0;
 
-    // Snapshot de inicio de hora (para calcular energía del periodo)
-    static uint16_t  s_snap_day_pv = 0, s_snap_day_exp = 0;
-    static uint16_t  s_snap_day_imp = 0, s_snap_day_load = 0;
-    static uint16_t  s_snap_day_bchg = 0, s_snap_day_bdis = 0;
-    static bool      s_snap_valid = false;
+    static uint16_t s_snap_day_pv = 0, s_snap_day_exp = 0;
+    static uint16_t s_snap_day_imp = 0, s_snap_day_load = 0;
+    static uint16_t s_snap_day_bchg = 0, s_snap_day_bdis = 0;
+    static bool     s_snap_valid = false;
 
-    // SOC al inicio del día
-    static uint8_t   s_soc_start_of_day = 0;
-    static bool      s_soc_start_set    = false;
-
-    // ── Gestión de WiFi no bloqueante ─────────────────────────────────────
-    uint32_t wifi_attempt_start = millis();
-    bool     wifi_notified_ok   = false;
-    bool     wifi_notified_fail = false;
+    static uint8_t  s_soc_start_of_day = 0;
 
     for (;;) {
         // ── Reconexión WiFi ───────────────────────────────────────────────
         if (WiFi.status() != WL_CONNECTED) {
             g_wifi_connected = false;
-
-            // Reintentar cada 15 s
             static uint32_t last_reconnect = 0;
             if (millis() - last_reconnect > 15000) {
-                Serial.println("[WiFi] Reconectando...");
+                Serial0.println("[WiFi] Reconectando...");
                 WiFi.disconnect();
                 WiFi.begin(g_cfg.wifi_ssid, g_cfg.wifi_pass);
                 last_reconnect = millis();
             }
-
             vTaskDelay(pdMS_TO_TICKS(1000));
             continue;
         }
@@ -175,25 +160,17 @@ static void solarmanTask(void* /*pv*/) {
         // ── WiFi recién conectado ─────────────────────────────────────────
         if (!g_wifi_connected) {
             g_wifi_connected = true;
-            String ip = WiFi.localIP().toString();
-            Serial.printf("[WiFi] Conectado: %s\n", ip.c_str());
-
-            // Actualizar dashboard_tick para mostrar IP
-            // El splash ya no existe, pero podemos notificar vía serial
-            // y el config_screen_tick() actualizará el label de IP
-
-            // Esperar NTP (hasta 10 s, no bloqueante para otras tareas)
+            Serial0.printf("[WiFi] Conectado: %s\n",
+                          WiFi.localIP().toString().c_str());
             uint32_t ntp_wait = millis();
             while (time(nullptr) < 1700000000UL &&
-                   millis() - ntp_wait < 10000) {
+                   millis() - ntp_wait < 10000)
                 vTaskDelay(pdMS_TO_TICKS(500));
-            }
-            if (time(nullptr) > 1700000000UL)
-                Serial.println("[NTP] Sincronizado");
-            else
-                Serial.println("[NTP] Timeout (se reintentará)");
+            Serial0.println(time(nullptr) > 1700000000UL
+                ? "[NTP] Sincronizado" : "[NTP] Timeout");
         }
-    
+
+        // ── 1. Datos instantáneos ─────────────────────────────────────────
         if (client.fetchEnergyData(local_e)) {
             Serial0.printf("[Live] PV:%dW Grid:%dW Bat:%dW(%d%%) Load:%dW\n",
                 (int)local_e.pv_power, (int)local_e.grid_power,
@@ -205,42 +182,71 @@ static void solarmanTask(void* /*pv*/) {
                 xSemaphoreGive(g_mutex);
             }
         }
-    
 
-        // ── Alineación a intervalos de 5 minutos ─────────────────────────────────
+        // ── 2. Datos diarios ──────────────────────────────────────────────
+        static uint32_t last_daily_ms = millis() - POLL_DAILY_MS + POLL_INTERVAL_MS;
+        if (millis() - last_daily_ms >= POLL_DAILY_MS) {
+            if (client.fetchDailyStats(local_d)) {
+                last_daily_ms = millis();
+                // Actualizar g_daily para el servidor web
+                if (xSemaphoreTake(g_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                    g_daily       = local_d;
+                    g_daily_ready = true;
+                    xSemaphoreGive(g_mutex);
+                }
+            }
+        }
+
+        // ── 3. Grabación ──────────────────────────────────────────────────
         uint32_t now_ep    = (uint32_t)time(nullptr);
-        uint32_t slot_5min = now_ep / 300;           // slot actual (cambia cada 5 min)
+        uint32_t slot_5min = now_ep / 300;
 
-        // Esperar NTP válido
-        if (now_ep < 1700000000UL) goto end_record;
+        if (now_ep < 1700000000UL) goto end_record;   // NTP no listo
 
-        // ── Primer arranque: alinear al próximo slot ──────────────────────────────
-        if (!s_startup_done && local_e.valid && local_d.valid) {
-            s_startup_done = true;
-            s_cur_5min_slot = (int32_t)slot_5min;   // empezar desde el slot actual
+        // Startup: inicializar estado desde la primera lectura válida
+        if (!s_startup_done) {
+            if (!local_e.valid || !local_d.valid) goto end_record;
+            s_startup_done  = true;
+            s_cur_5min_slot = (int32_t)slot_5min;
 
             struct tm now_tm; getLocalTime(&now_tm, 500);
             s_cur_hour = now_tm.tm_hour;
             s_cur_day  = now_tm.tm_mday;
 
-            // Inicializar snapshot de acumulados
-            s_snap_day_pv   = (uint16_t)(local_d.pv_kwh          * 10.0f + 0.5f);
-            s_snap_day_exp  = (uint16_t)(local_d.export_kwh       * 10.0f + 0.5f);
-            s_snap_day_imp  = (uint16_t)(local_d.import_kwh       * 10.0f + 0.5f);
-            s_snap_day_load = (uint16_t)(local_d.load_kwh         * 10.0f + 0.5f);
-            s_snap_day_bchg = (uint16_t)(local_d.batt_charge_kwh  * 10.0f + 0.5f);
-            s_snap_day_bdis = (uint16_t)(local_d.batt_discharge_kwh*10.0f + 0.5f);
+            s_snap_day_pv   = (uint16_t)(local_d.pv_kwh             * 10.0f + 0.5f);
+            s_snap_day_exp  = (uint16_t)(local_d.export_kwh          * 10.0f + 0.5f);
+            s_snap_day_imp  = (uint16_t)(local_d.import_kwh          * 10.0f + 0.5f);
+            s_snap_day_load = (uint16_t)(local_d.load_kwh            * 10.0f + 0.5f);
+            s_snap_day_bchg = (uint16_t)(local_d.batt_charge_kwh     * 10.0f + 0.5f);
+            s_snap_day_bdis = (uint16_t)(local_d.batt_discharge_kwh  * 10.0f + 0.5f);
             s_snap_valid    = true;
-
             s_soc_start_of_day = (uint8_t)local_e.batt_soc;
-            s_soc_start_set    = true;
 
-            Serial.printf("[Record] Startup: slot=%lu hora=%d dia=%d\n",
-                        (unsigned long)slot_5min, s_cur_hour, s_cur_day);
+            // Publicar en cache el primer valor del día
+            {
+                struct tm today_tm = now_tm;
+                today_tm.tm_hour = 0; today_tm.tm_min = 0;
+                today_tm.tm_sec  = 0; today_tm.tm_isdst = -1;
+                uint32_t dep = (uint32_t)mktime(&today_tm);
+                DailyRecord dr{};
+                dr.day_epoch   = dep;
+                dr.pv_10wh     = s_snap_day_pv;
+                dr.export_10wh = s_snap_day_exp;
+                dr.import_10wh = s_snap_day_imp;
+                dr.load_10wh   = s_snap_day_load;
+                dr.bchg_10wh   = s_snap_day_bchg;
+                dr.bdis_10wh   = s_snap_day_bdis;
+                dr.soc_start   = s_soc_start_of_day;
+                dr.soc_end     = (uint8_t)local_e.batt_soc;
+                dr.flags       = 0x01;
+                Cache.pushDaily(dr);   // disponible para el web server inmediatamente
+            }
+
+            Serial0.printf("[Record] Startup ok: slot=%lu h=%d d=%d\n",
+                (unsigned long)slot_5min, s_cur_hour, s_cur_day);
             goto end_record;
         }
 
-        if (!s_startup_done) goto end_record;
         if (!local_e.valid || !local_d.valid) goto end_record;
 
         {
@@ -248,7 +254,6 @@ static void solarmanTask(void* /*pv*/) {
             int new_hour = now_tm.tm_hour;
             int new_day  = now_tm.tm_mday;
 
-            // Acumular para la media de la hora en curso
             s_acc_pv   += local_e.pv_power;
             s_acc_grid += local_e.grid_power;
             s_acc_batt += local_e.batt_power;
@@ -256,61 +261,49 @@ static void solarmanTask(void* /*pv*/) {
             s_acc_soc   = (uint8_t)local_e.batt_soc;
             s_acc_n++;
 
-            // ── Nuevo slot de 5 minutos (grabar Record5Min en el límite exacto) ───
+            // ── Nuevo slot de 5 minutos ───────────────────────────────────
             if ((int32_t)slot_5min != s_cur_5min_slot) {
                 s_cur_5min_slot = (int32_t)slot_5min;
-
-                // El timestamp del registro es el inicio del slot completado
-                uint32_t record_ts = slot_5min * 300;   // inicio del slot actual
+                uint32_t record_ts = slot_5min * 300;
 
                 Record5Min r{};
                 r.timestamp  = record_ts;
-                r.pv_w       = (int16_t)constrain(local_e.pv_power,   -32767, 32767);
-                r.grid_w     = (int16_t)constrain(local_e.grid_power,  -32767, 32767);
-                r.batt_w     = (int16_t)constrain(local_e.batt_power,  -32767, 32767);
-                r.load_w     = (int16_t)constrain(local_e.load_power,  -32767, 32767);
-                r.day_pv     = (uint16_t)(local_d.pv_kwh          * 10.0f + 0.5f);
-                r.day_export = (uint16_t)(local_d.export_kwh       * 10.0f + 0.5f);
-                r.day_import = (uint16_t)(local_d.import_kwh       * 10.0f + 0.5f);
-                r.day_load   = (uint16_t)(local_d.load_kwh         * 10.0f + 0.5f);
-                r.day_bchg   = (uint16_t)(local_d.batt_charge_kwh  * 10.0f + 0.5f);
-                r.day_bdis   = (uint16_t)(local_d.batt_discharge_kwh*10.0f + 0.5f);
+                r.pv_w       = (int16_t)constrain(local_e.pv_power,  -32767, 32767);
+                r.grid_w     = (int16_t)constrain(local_e.grid_power, -32767, 32767);
+                r.batt_w     = (int16_t)constrain(local_e.batt_power, -32767, 32767);
+                r.load_w     = (int16_t)constrain(local_e.load_power, -32767, 32767);
+                r.day_pv     = (uint16_t)(local_d.pv_kwh             * 10.0f + 0.5f);
+                r.day_export = (uint16_t)(local_d.export_kwh          * 10.0f + 0.5f);
+                r.day_import = (uint16_t)(local_d.import_kwh          * 10.0f + 0.5f);
+                r.day_load   = (uint16_t)(local_d.load_kwh            * 10.0f + 0.5f);
+                r.day_bchg   = (uint16_t)(local_d.batt_charge_kwh     * 10.0f + 0.5f);
+                r.day_bdis   = (uint16_t)(local_d.batt_discharge_kwh  * 10.0f + 0.5f);
                 r.soc        = (uint8_t)local_e.batt_soc;
                 r.flags      = 0x01;
-                r.extra[0]   = r.extra[1] = 0;
 
                 Store.push(r);
                 Cache.pushRaw(r);
 
-                // Guardar sesión para detección de gaps
-                SessionState ss{record_ts, true};
-                Storage.saveSessionState(ss);
-
-                // Actualizar snapshot de acumulados si ha pasado la hora
-                // (el snapshot se actualiza al cerrar la hora, no aquí)
+                Storage.saveSessionState({record_ts, true});
             }
 
-            // ── Cambio de hora: finalizar HourlyRecord ────────────────────────────
+            // ── Cambio de hora ────────────────────────────────────────────
             if (new_hour != s_cur_hour) {
                 if (s_acc_n > 0 && s_snap_valid) {
-                    // Medianoche del día actual
                     struct tm mid = now_tm;
-                    // Si new_hour == 0, la hora que cierra es la 23 de ayer
-                    if (new_hour == 0) mid.tm_mday--;   // mktime normaliza
+                    if (new_hour == 0) mid.tm_mday--;
                     mid.tm_hour = s_cur_hour;
                     mid.tm_min = 0; mid.tm_sec = 0; mid.tm_isdst = -1;
-                    uint32_t hour_ep = (uint32_t)mktime(&mid);
 
-                    // Acumulados al final de la hora (último valor leído)
-                    uint16_t cur_pv   = (uint16_t)(local_d.pv_kwh          * 10.0f + 0.5f);
-                    uint16_t cur_exp  = (uint16_t)(local_d.export_kwh       * 10.0f + 0.5f);
-                    uint16_t cur_imp  = (uint16_t)(local_d.import_kwh       * 10.0f + 0.5f);
-                    uint16_t cur_load = (uint16_t)(local_d.load_kwh         * 10.0f + 0.5f);
-                    uint16_t cur_bchg = (uint16_t)(local_d.batt_charge_kwh  * 10.0f + 0.5f);
-                    uint16_t cur_bdis = (uint16_t)(local_d.batt_discharge_kwh*10.0f + 0.5f);
+                    uint16_t cur_pv   = (uint16_t)(local_d.pv_kwh            * 10.0f + 0.5f);
+                    uint16_t cur_exp  = (uint16_t)(local_d.export_kwh         * 10.0f + 0.5f);
+                    uint16_t cur_imp  = (uint16_t)(local_d.import_kwh         * 10.0f + 0.5f);
+                    uint16_t cur_load = (uint16_t)(local_d.load_kwh           * 10.0f + 0.5f);
+                    uint16_t cur_bchg = (uint16_t)(local_d.batt_charge_kwh    * 10.0f + 0.5f);
+                    uint16_t cur_bdis = (uint16_t)(local_d.batt_discharge_kwh * 10.0f + 0.5f);
 
                     HourlyRecord hr{};
-                    hr.hour_epoch   = hour_ep;
+                    hr.hour_epoch   = (uint32_t)mktime(&mid);
                     hr.avg_pv_w     = (int16_t)(s_acc_pv   / s_acc_n);
                     hr.avg_grid_w   = (int16_t)(s_acc_grid  / s_acc_n);
                     hr.avg_batt_w   = (int16_t)(s_acc_batt  / s_acc_n);
@@ -318,42 +311,52 @@ static void solarmanTask(void* /*pv*/) {
                     hr.soc_end       = s_acc_soc;
                     hr.sample_count  = (uint8_t)min(s_acc_n, 255);
                     hr.flags         = 0x01;
-                    // Acumulados diarios al final de la hora
-                    hr.day_pv     = cur_pv;
-                    hr.day_export = cur_exp;
-                    hr.day_import = cur_imp;
-                    hr.day_load   = cur_load;
-                    hr.day_bchg   = cur_bchg;
-                    hr.day_bdis   = cur_bdis;
+                    hr.day_pv        = cur_pv;
+                    hr.day_export    = cur_exp;
+                    hr.day_import    = cur_imp;
+                    hr.day_load      = cur_load;
+                    hr.day_bchg      = cur_bchg;
+                    hr.day_bdis      = cur_bdis;
+                    Cache.pushHourly(hr);
 
-                    Cache.pushHourly(hr);   // guarda en flash + PSRAM
-
-                    // Nuevo snapshot para la siguiente hora
-                    s_snap_day_pv   = cur_pv;
-                    s_snap_day_exp  = cur_exp;
-                    s_snap_day_imp  = cur_imp;
-                    s_snap_day_load = cur_load;
-                    s_snap_day_bchg = cur_bchg;
-                    s_snap_day_bdis = cur_bdis;
+                    s_snap_day_pv   = cur_pv;   s_snap_day_exp  = cur_exp;
+                    s_snap_day_imp  = cur_imp;  s_snap_day_load = cur_load;
+                    s_snap_day_bchg = cur_bchg; s_snap_day_bdis = cur_bdis;
                 }
 
-                // Resetear acumuladores
                 s_acc_pv = s_acc_grid = s_acc_batt = s_acc_load = 0;
                 s_acc_n  = 0;
                 s_cur_hour = new_hour;
+
+                // Actualizar DailyRecord parcial al cambio de hora
+                {
+                    struct tm today_tm = now_tm;
+                    today_tm.tm_hour = 0; today_tm.tm_min = 0;
+                    today_tm.tm_sec  = 0; today_tm.tm_isdst = -1;
+                    uint32_t dep = (uint32_t)mktime(&today_tm);
+                    DailyRecord dr{};
+                    dr.day_epoch   = dep;
+                    dr.pv_10wh     = (uint16_t)(local_d.pv_kwh            * 10.0f + 0.5f);
+                    dr.export_10wh = (uint16_t)(local_d.export_kwh         * 10.0f + 0.5f);
+                    dr.import_10wh = (uint16_t)(local_d.import_kwh         * 10.0f + 0.5f);
+                    dr.load_10wh   = (uint16_t)(local_d.load_kwh           * 10.0f + 0.5f);
+                    dr.bchg_10wh   = (uint16_t)(local_d.batt_charge_kwh    * 10.0f + 0.5f);
+                    dr.bdis_10wh   = (uint16_t)(local_d.batt_discharge_kwh * 10.0f + 0.5f);
+                    dr.soc_start   = s_soc_start_of_day;
+                    dr.soc_end     = (uint8_t)local_e.batt_soc;
+                    dr.flags       = 0x01;
+                    Cache.pushDaily(dr);
+                }
             }
 
-            // ── Cambio de día: finalizar DailyRecord ──────────────────────────────
+            // ── Cambio de día ─────────────────────────────────────────────
             if (new_day != s_cur_day) {
-                // Medianoche del día que acaba de terminar
                 struct tm yesterday = now_tm;
                 yesterday.tm_mday--;
                 yesterday.tm_hour = 0; yesterday.tm_min = 0;
                 yesterday.tm_sec  = 0; yesterday.tm_isdst = -1;
                 uint32_t dep_yesterday = (uint32_t)mktime(&yesterday);
 
-                // Los registros del inversor se resetean a medianoche
-                // El último valor antes del reset es el total del día
                 HourlyRecord last_hr{};
                 if (Store.getLastHourly(dep_yesterday, last_hr)) {
                     DailyRecord dr{};
@@ -366,63 +369,19 @@ static void solarmanTask(void* /*pv*/) {
                     dr.bdis_10wh   = last_hr.day_bdis;
                     dr.soc_start   = s_soc_start_of_day;
                     dr.soc_end     = last_hr.soc_end;
-                    dr.flags       = 0x03;   // válido + completo
+                    dr.flags       = 0x03;
                     Cache.pushDaily(dr);
                 }
 
-                // Nuevo día
                 s_soc_start_of_day = (uint8_t)local_e.batt_soc;
-                s_soc_start_set    = true;
-                s_cur_day          = new_day;
-
-                // Actualizar DailyRecord del día actual también (parcial)
-                {
-                    struct tm today_tm = now_tm;
-                    today_tm.tm_hour = 0; today_tm.tm_min = 0;
-                    today_tm.tm_sec  = 0; today_tm.tm_isdst = -1;
-                    uint32_t dep_today = (uint32_t)mktime(&today_tm);
-
-                    DailyRecord dr_today{};
-                    dr_today.day_epoch   = dep_today;
-                    dr_today.pv_10wh     = (uint16_t)(local_d.pv_kwh          * 10.0f + 0.5f);
-                    dr_today.export_10wh = (uint16_t)(local_d.export_kwh       * 10.0f + 0.5f);
-                    dr_today.import_10wh = (uint16_t)(local_d.import_kwh       * 10.0f + 0.5f);
-                    dr_today.load_10wh   = (uint16_t)(local_d.load_kwh         * 10.0f + 0.5f);
-                    dr_today.bchg_10wh   = (uint16_t)(local_d.batt_charge_kwh  * 10.0f + 0.5f);
-                    dr_today.bdis_10wh   = (uint16_t)(local_d.batt_discharge_kwh*10.0f + 0.5f);
-                    dr_today.soc_start   = s_soc_start_of_day;
-                    dr_today.soc_end     = (uint8_t)local_e.batt_soc;
-                    dr_today.flags       = 0x01;   // válido, no completo
-                    Cache.pushDaily(dr_today);
-                }
-            } else {
-                // Mismo día: actualizar DailyRecord parcial cada hora
-                if (new_hour != s_cur_hour) {
-                    struct tm today_tm = now_tm;
-                    today_tm.tm_hour = 0; today_tm.tm_min = 0;
-                    today_tm.tm_sec  = 0; today_tm.tm_isdst = -1;
-                    uint32_t dep_today = (uint32_t)mktime(&today_tm);
-
-                    DailyRecord dr_today{};
-                    dr_today.day_epoch   = dep_today;
-                    dr_today.pv_10wh     = (uint16_t)(local_d.pv_kwh          * 10.0f + 0.5f);
-                    dr_today.export_10wh = (uint16_t)(local_d.export_kwh       * 10.0f + 0.5f);
-                    dr_today.import_10wh = (uint16_t)(local_d.import_kwh       * 10.0f + 0.5f);
-                    dr_today.load_10wh   = (uint16_t)(local_d.load_kwh         * 10.0f + 0.5f);
-                    dr_today.bchg_10wh   = (uint16_t)(local_d.batt_charge_kwh  * 10.0f + 0.5f);
-                    dr_today.bdis_10wh   = (uint16_t)(local_d.batt_discharge_kwh*10.0f + 0.5f);
-                    dr_today.soc_start   = s_soc_start_of_day;
-                    dr_today.soc_end     = (uint8_t)local_e.batt_soc;
-                    dr_today.flags       = 0x01;
-                    Cache.pushDaily(dr_today);
-                }
+                s_cur_day = new_day;
             }
         }
 
         end_record:;
-    }
 
-    vTaskDelay(pdMS_TO_TICKS(POLL_INTERVAL_MS));
+        vTaskDelay(pdMS_TO_TICKS(POLL_INTERVAL_MS));   // ← dentro del bucle
+    }
 }
 
 // ── Setup ─────────────────────────────────────────────────────────────────
@@ -535,9 +494,8 @@ void setup() {
 
     lv_obj_t* tile_dash    = lv_tileview_add_tile(tv, 0, 0, LV_DIR_RIGHT);
     lv_obj_t* tile_stats   = lv_tileview_add_tile(tv, 1, 0, LV_DIR_HOR);
-    g_tile_summary         = lv_tileview_add_tile(tv, 2, 0, LV_DIR_HOR);
-    g_tile_chart           = lv_tileview_add_tile(tv, 3, 0, LV_DIR_HOR);
-    lv_obj_t* tile_config  = lv_tileview_add_tile(tv, 4, 0, LV_DIR_LEFT);
+    g_tile_chart           = lv_tileview_add_tile(tv, 2, 0, LV_DIR_HOR);
+    lv_obj_t* tile_config  = lv_tileview_add_tile(tv, 3, 0, LV_DIR_LEFT);
 
     dashboard_init(tile_dash);
     stats_screen_init(tile_stats);
@@ -579,7 +537,7 @@ void setup() {
     lv_timer_handler();
     splash_finish();
 
-    Serial.println("[Setup] Completado");
+    Serial0.println("[Setup] Completado");
     print_mem_stats("setup finalizado");
 }
 
