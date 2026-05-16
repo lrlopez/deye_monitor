@@ -251,7 +251,7 @@ async function refresh() {
     gv.style.color = gridCol;
     document.getElementById('grid-sub').textContent = gridTxt;
 
-    const battCol = l.batt_w >= 0 ? '#2ecc71' : '#e74c3c';
+    const battCol = l.batt_w > 0 ? '#e74c3c' : '#2ecc71';
     const battTxt = l.batt_w < 0  ? 'Cargando'
                   : l.batt_w > 0  ? 'Descargando' : 'En reposo';
     document.getElementById('batt-soc').textContent = l.batt_soc + '%';
