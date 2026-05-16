@@ -18,6 +18,7 @@
 #include "psram_alloc.h"
 #include "psram_cache.h"
 #include "backlight.h"
+#include "pagination_dots.h"
 
 
 /* Change to your screen resolution */
@@ -99,9 +100,11 @@ static DailyStats        g_daily;
 static SemaphoreHandle_t g_mutex;
 static volatile bool     g_energy_ready = false;
 static volatile bool     g_daily_ready  = false;
-static lv_obj_t*         g_tile_chart = nullptr;
-static lv_obj_t*         g_tile_stats = nullptr;
-static lv_obj_t*         g_tile_summary = nullptr;
+static lv_obj_t*         g_tile_dash    = nullptr;
+static lv_obj_t*         g_tile_stats   = nullptr;
+static lv_obj_t*         g_tile_chart   = nullptr;
+static lv_obj_t*         g_tile_config  = nullptr;
+
 // Config en RAM cargada desde NVS al arrancar
 static AppConfig g_cfg;
 // Flag: WiFi conectado (escrito por solarmanTask, leído por loop)
@@ -492,20 +495,32 @@ void setup() {
     lv_obj_set_scrollbar_mode(tv, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_style_bg_color(tv, lv_color_hex(0x0D1117), 0);
 
-    lv_obj_t* tile_dash    = lv_tileview_add_tile(tv, 0, 0, LV_DIR_RIGHT);
-    lv_obj_t* tile_stats   = lv_tileview_add_tile(tv, 1, 0, LV_DIR_HOR);
-    g_tile_chart           = lv_tileview_add_tile(tv, 2, 0, LV_DIR_HOR);
-    lv_obj_t* tile_config  = lv_tileview_add_tile(tv, 3, 0, LV_DIR_LEFT);
+    g_tile_dash    = lv_tileview_add_tile(tv, 0, 0, LV_DIR_RIGHT);
+    g_tile_stats   = lv_tileview_add_tile(tv, 1, 0, LV_DIR_HOR);
+    g_tile_chart   = lv_tileview_add_tile(tv, 2, 0, LV_DIR_HOR);
+    g_tile_config  = lv_tileview_add_tile(tv, 3, 0, LV_DIR_LEFT);
 
-    dashboard_init(tile_dash);
-    stats_screen_init(tile_stats);
+    dashboard_init(g_tile_dash);
+    stats_screen_init(g_tile_stats);
     chart_screen_init(g_tile_chart);
-    config_screen_init(tile_config);
+    config_screen_init(g_tile_config);
+    
+    pagination_dots_init(g_main_screen, 4);
 
     lv_obj_add_event_cb(tv, [](lv_event_t* e) {
         lv_obj_t* tile = lv_tileview_get_tile_active(lv_event_get_target_obj(e));
-        chart_screen_set_active(  tile == g_tile_chart);
-        stats_screen_set_active(  tile == g_tile_stats);
+       
+        // Alternativa si lv_tileview_get_tile_act no compila:
+        int idx = 0;
+        for (int i = 0; i < 5; i++) {
+            lv_obj_t* tiles[] = {g_tile_dash, g_tile_stats,
+                                g_tile_chart, g_tile_config};
+            if (tiles[i] == tile) { idx = i; break; }
+        }
+        pagination_dots_set(idx);
+
+        chart_screen_set_active(tile == g_tile_chart);
+        stats_screen_set_active(tile == g_tile_stats);
     }, LV_EVENT_VALUE_CHANGED, nullptr);
 
     // ── Servidor web ──────────────────────────────────────────────────────
