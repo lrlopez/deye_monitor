@@ -188,7 +188,7 @@ void calendar_show(uint32_t sel_epoch,
     s_yr  = ts.tm_year + 1900;
 
     // ── Overlay ───────────────────────────────────────────────────────────
-    s_overlay = lv_obj_create(lv_scr_act());
+    s_overlay = lv_obj_create(lv_layer_top());
     lv_obj_set_pos(s_overlay, 0, 0);
     lv_obj_set_size(s_overlay, SCREEN_WIDTH, SCREEN_HEIGHT);
     lv_obj_set_style_bg_color(s_overlay, C_OVERLAY, 0);
@@ -200,7 +200,7 @@ void calendar_show(uint32_t sel_epoch,
     lv_obj_move_foreground(s_overlay);
 
     // ── Popup ─────────────────────────────────────────────────────────────
-    s_popup = lv_obj_create(lv_scr_act());
+    s_popup = lv_obj_create(lv_layer_top());
     lv_obj_set_pos(s_popup, CAL_X, CAL_Y);
     lv_obj_set_size(s_popup, CAL_W, CAL_H);
     lv_obj_set_style_bg_color(s_popup, C_CARD, 0);

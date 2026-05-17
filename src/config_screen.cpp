@@ -814,8 +814,8 @@ void config_screen_init(lv_obj_t* parent) {
 
     // ── Teclado ────────────────────────────────────────────────────────────
     // El teclado se ancla a la pantalla raíz para no desplazarse con el scroll
-    kb = lv_keyboard_create(lv_scr_act());
-    lv_obj_set_size(kb, SX(480), SY(140));
+    kb = lv_keyboard_create(lv_layer_top());
+    lv_obj_set_size(kb, SCREEN_WIDTH, SY(140));
     lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_event_cb(kb, kb_event_cb, LV_EVENT_READY,  nullptr);
