@@ -56,6 +56,7 @@ public:
     // Para stats/summary: acceso directo al array ordenado
     const DailyRecord* getDailyArray() const { return _day_buf; }
     uint32_t           getDailyCount()  const { return _day_count; }
+    uint32_t           getOldestDailyEpoch() const;
 
     void lock()   { xSemaphoreTake(_mutex, portMAX_DELAY); }
     void unlock() { xSemaphoreGive(_mutex); }

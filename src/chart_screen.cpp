@@ -5,6 +5,7 @@
 #include "ui_constants.h"
 #include "config.h"
 #include "psram_cache.h"
+#include "calendar_popup.h"
 
 // ── Paleta ────────────────────────────────────────────────────────────────
 #define C_BG    lv_color_hex(0x0D1117)
@@ -22,7 +23,7 @@
 // ── Estado ────────────────────────────────────────────────────────────────
 static int      s_offset      = 0;    // 0=hoy, -1=ayer, …, -6
 static bool     s_active      = false;
-static uint32_t s_last_tick   = 0;
+static uint32_t s_last_tick   = -270000UL;
 static bool s_chart_updating = false;
 
 // s_day_recs ya no existe: leemos directo desde la cache PSRAM
@@ -80,7 +81,7 @@ static void update_date_label() {
     else                lv_obj_remove_state(s_btn_prev, LV_STATE_DISABLED);
 
     lv_obj_set_style_text_color(s_lbl_date,
-        s_offset == 0 ? C_WHITE : lv_color_hex(0x4A9EFF), 0);
+        s_offset == 0 ? C_WHITE : C_ACCENT, 0);
 }
 
 // Devuelve la coordenada X absoluta (en pantalla) del punto de hora h
@@ -376,13 +377,33 @@ void chart_screen_init(lv_obj_t* parent) {
 
     // ── Barra de navegación ───────────────────────────────────────────────
     s_btn_prev = nav_btn(parent, SX(2), SY(2), NAV_BTN_W, NAV_BTN_H,
-                          LV_SYMBOL_LEFT, prev_cb);
-    s_btn_next = nav_btn(parent, SCREEN_WIDTH - NAV_BTN_W - SX(2), SY(2),
-                          NAV_BTN_W, NAV_BTN_H, LV_SYMBOL_RIGHT, next_cb);
+                        LV_SYMBOL_LEFT, prev_cb);
+    s_btn_next = nav_btn(parent, SCREEN_WIDTH-NAV_BTN_W-SX(2), SY(2),
+                        NAV_BTN_W, NAV_BTN_H, LV_SYMBOL_RIGHT, next_cb);
+
+    // Botón calendario
+    lv_obj_t* btn_cal = nav_btn(parent,
+        SCREEN_WIDTH-NAV_BTN_W-SX(4)-SX(34), SY(2),
+        SX(34), NAV_BTN_H, LV_SYMBOL_LIST, nullptr);
+    lv_obj_add_event_cb(btn_cal, [](lv_event_t*) {
+        calendar_show(
+            day_epoch_from_offset(s_offset),
+            Cache.getOldestDailyEpoch(),
+            [](uint32_t dep) {
+                time_t now; time(&now);
+                struct tm tm_now; localtime_r(&now, &tm_now);
+                tm_now.tm_hour=0;tm_now.tm_min=0;
+                tm_now.tm_sec=0;tm_now.tm_isdst=-1;
+                uint32_t today = (uint32_t)mktime(&tm_now);
+                s_offset = (int)((int64_t)dep-(int64_t)today) / 86400;
+                load_day();
+            });
+    }, LV_EVENT_CLICKED, nullptr);
 
     s_lbl_date = lv_label_create(parent);
-    lv_obj_set_pos(s_lbl_date, NAV_BTN_W + SX(6), SY(7));
-    lv_obj_set_width(s_lbl_date, SCREEN_WIDTH - 2*(NAV_BTN_W + SX(6)));
+    lv_obj_set_pos(s_lbl_date, NAV_BTN_W+SX(6), SY(7));
+    lv_obj_set_width(s_lbl_date,
+        SCREEN_WIDTH - 2*NAV_BTN_W - SX(34) - SX(12));
     lv_obj_set_style_text_align(s_lbl_date, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(s_lbl_date, &FONT_NORMAL, 0);
     lv_obj_set_style_text_color(s_lbl_date, C_WHITE, 0);
@@ -537,8 +558,22 @@ void chart_screen_set_active(bool active) {
 }
 
 void chart_screen_tick() {
-    if (!s_active || s_offset != 0) return;
-    if (millis() - s_last_tick >= 300000UL) {   // refrescar hoy cada 5 min
+    if (!s_active) return;
+
+    // ── Detectar medianoche cuando mostramos hoy ──────────────────────────
+    if (s_offset == 0) {
+        uint32_t current_today = day_epoch_from_offset(0);
+        if (current_today != s_day_epoch_loaded) {
+            Serial.println("[Chart] Cambio de dia, recargando...");
+            load_day();
+            s_last_tick = millis();
+            return;
+        }
+    }
+
+    // ── Refresco periódico solo cuando es hoy ─────────────────────────────
+    if (s_offset != 0) return;
+    if (millis() - s_last_tick >= 300000UL) {
         load_day();
         s_last_tick = millis();
     }

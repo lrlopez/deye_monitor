@@ -5,6 +5,7 @@
 #include "config.h"
 #include "ui_constants.h"
 #include "psram_cache.h"
+#include "calendar_popup.h"
 
 // ── Paleta ────────────────────────────────────────────────────────────────
 #define C_BG    lv_color_hex(0x0D1117)
@@ -65,6 +66,8 @@ static void update_nav_label() {
 
     lv_obj_set_style_text_color(s_lbl_date,
         s_offset == 0 ? C_WHITE : lv_color_hex(0x4A9EFF), 0);
+    lv_obj_set_style_text_color(s_lbl_date,
+    s_offset == 0 ? C_WHITE : C_ACCENT, 0);
 }
 
 // ── Donut helpers ─────────────────────────────────────────────────────────
@@ -244,20 +247,45 @@ void stats_screen_init(lv_obj_t* parent) {
 
     // ── Barra de navegación ───────────────────────────────────────────────
     s_btn_prev = nav_btn(parent, SX(2), SY(2), NAV_BTN_W, NAV_BTN_H,
-                          LV_SYMBOL_LEFT, prev_cb);
-    s_btn_next = nav_btn(parent, SCREEN_WIDTH - NAV_BTN_W - SX(2), SY(2),
-                          NAV_BTN_W, NAV_BTN_H, LV_SYMBOL_RIGHT, next_cb);
+                        LV_SYMBOL_LEFT, prev_cb);
 
+    // Botón →
+    s_btn_next = nav_btn(parent, SCREEN_WIDTH-NAV_BTN_W-SX(2), SY(2),
+                        NAV_BTN_W, NAV_BTN_H, LV_SYMBOL_RIGHT, next_cb);
+
+    // Botón calendario — entre label y →
+    lv_obj_t* btn_cal = nav_btn(parent,
+        SCREEN_WIDTH - NAV_BTN_W - SX(4) - SX(34), SY(2),
+        SX(34), NAV_BTN_H, LV_SYMBOL_LIST, nullptr);
+    lv_obj_add_event_cb(btn_cal, [](lv_event_t*) {
+        calendar_show(
+            day_epoch_from_offset(s_offset),
+            Cache.getOldestDailyEpoch(),
+            [](uint32_t dep) {
+                // Calcular offset a partir del epoch seleccionado
+                time_t now; time(&now);
+                struct tm tm_now; localtime_r(&now, &tm_now);
+                tm_now.tm_hour=0;tm_now.tm_min=0;
+                tm_now.tm_sec=0;tm_now.tm_isdst=-1;
+                uint32_t today = (uint32_t)mktime(&tm_now);
+                s_offset = (int)((int64_t)dep-(int64_t)today) / 86400;
+                load_and_render(s_offset);
+            });
+    }, LV_EVENT_CLICKED, nullptr);
+
+    // Label de fecha — ancho reducido para dejar sitio al botón cal
     s_lbl_date = lv_label_create(parent);
-    lv_obj_set_pos(s_lbl_date, NAV_BTN_W + SX(4), SY(7));
-    lv_obj_set_width(s_lbl_date, SCREEN_WIDTH - 2*(NAV_BTN_W + SX(4)));
+    lv_obj_set_pos(s_lbl_date, NAV_BTN_W+SX(4), SY(7));
+    lv_obj_set_width(s_lbl_date,
+        SCREEN_WIDTH - 2*NAV_BTN_W - SX(34) - SX(10));
     lv_obj_set_style_text_align(s_lbl_date, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(s_lbl_date, &FONT_NORMAL, 0);
     lv_obj_set_style_text_color(s_lbl_date, C_WHITE, 0);
     lv_label_set_text(s_lbl_date, "Hoy");
+    // Tap en el título → volver a hoy
     lv_obj_add_flag(s_lbl_date, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(s_lbl_date, [](lv_event_t*) {
-        if (s_offset == 0) return;   // ya estamos en hoy
+        if (s_offset == 0) return;
         s_offset = 0;
         load_and_render(0);
     }, LV_EVENT_CLICKED, nullptr);

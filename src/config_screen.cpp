@@ -6,18 +6,6 @@
 #include "config.h"
 #include "backlight.h"
 
-// ── Paleta ────────────────────────────────────────────────────────────────
-#define C_BG    lv_color_hex(0x0D1117)
-#define C_CARD  lv_color_hex(0x161B22)
-#define C_ACCENT lv_color_hex(0x4A9EFF)
-#define C_WHITE lv_color_hex(0xEAEAEA)
-#define C_MUTED lv_color_hex(0x6E7681)
-#define C_OK    lv_color_hex(0x2ECC71)
-#define C_ERR   lv_color_hex(0xE74C3C)
-#define C_WARN  lv_color_hex(0xF5C518)
-#define C_BTN   lv_color_hex(0x1F6FEB)
-#define C_LIST  lv_color_hex(0x1C2128)
-
 // Posición absoluta del campo SSID en pantalla (para anclar el dropdown)
 // sec_wifi está en y=28, campo SSID en y=18 dentro de la sección
 // 28 (sec y) + CFG_SEC_PAD(10) + 18 (row y) + CFG_FIELD_H(36) + 2 = 94

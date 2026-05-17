@@ -3,20 +3,6 @@
 #include "config.h"
 #include "ui_constants.h"
 
-// ── Paleta ────────────────────────────────────────────────────────────────
-#define C_BG        lv_color_hex(0x0A0E17)
-#define C_CARD      lv_color_hex(0x131929)
-#define C_WHITE     lv_color_hex(0xEAEAEA)
-#define C_MUTED     lv_color_hex(0x4E5A6E)
-#define C_MUTED2    lv_color_hex(0x6E7A8E)
-#define C_OK        lv_color_hex(0x2ECC71)
-#define C_WARN      lv_color_hex(0xF5C518)
-#define C_ERR       lv_color_hex(0xE74C3C)
-#define C_RUN       lv_color_hex(0x4A9EFF)
-#define C_ACCENT    lv_color_hex(0x1F6FEB)
-#define C_ACCENT2   lv_color_hex(0xF5C518)
-#define C_DOTS      lv_color_hex(0x1E2D45)
-
 // ── Pasos visibles (sin WIFI_OK/WIFI_FAIL que son alias) ──────────────────
 static const int VISIBLE_STEPS[] = {
     (int)SplashStep::LITTLEFS,

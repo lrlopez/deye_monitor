@@ -268,6 +268,17 @@ void PsramCache::pushRaw(const Record5Min& r) {
     _raw_days[slot].last  = r;
 }
 
+uint32_t PsramCache::getOldestDailyEpoch() const {
+    if (_day_count == 0) return 0;
+    uint32_t oldest = UINT32_MAX;
+    for (uint32_t i = 0; i < _day_count; i++) {
+        if ((_day_buf[i].flags & 0x01) &&
+            _day_buf[i].day_epoch < oldest)
+            oldest = _day_buf[i].day_epoch;
+    }
+    return (oldest == UINT32_MAX) ? 0 : oldest;
+}
+
 void PsramCache::printStats() {
     uint32_t total_psram = CACHE_RAW_SIZE + CACHE_HRLY_SIZE + CACHE_DAY_SIZE;
     Serial0.printf("[Cache] PSRAM total: %u KB | Daily: %lu/%d registros\n",

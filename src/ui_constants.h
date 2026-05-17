@@ -107,3 +107,30 @@
 // (solo para uso en add_y_labels())
 #define YAXIS_UNIT_PWR    "k"
 #define YAXIS_UNIT_SOC    "%"
+
+// ── Paleta ───────────────────────────────────────────────────────────────
+#define C_BG    lv_color_hex(0x0D1117)
+#define C_CARD  lv_color_hex(0x161B22)
+#define C_WHITE lv_color_hex(0xEAEAEA)
+#define C_MUTED     lv_color_hex(0x4E5A6E)
+#define C_MUTED2    lv_color_hex(0x6E7A8E)
+#define C_OK    lv_color_hex(0x2ECC71)
+#define C_ERR   lv_color_hex(0xE74C3C)
+#define C_WARN  lv_color_hex(0xF5C518)
+#define C_BTN   lv_color_hex(0x1F6FEB)
+
+#define C_RUN       lv_color_hex(0x4A9EFF)
+#define C_ACCENT    lv_color_hex(0x1F6FEB)
+#define C_ACCENT2   lv_color_hex(0xF5C518)
+#define C_DOTS      lv_color_hex(0x1E2D45)
+#define C_LIST      lv_color_hex(0x1C2128)
+
+#define C_OVERLAY   lv_color_hex(0x000000)
+#define C_HDR_BG    lv_color_hex(0x0D1117)
+#define C_BORDER    lv_color_hex(0x30363D)
+#define C_HAS_DATA  lv_color_hex(0x2ECC71)
+#define C_TODAY_BG  lv_color_hex(0x1B3358)
+#define C_SEL_BG    lv_color_hex(0x1F6FEB)
+#define C_DISABLED  lv_color_hex(0x252D3A)
+#define C_PRESS     lv_color_hex(0x1A2236)
+
