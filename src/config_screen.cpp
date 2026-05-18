@@ -99,6 +99,15 @@ static lv_obj_t* make_field(lv_obj_t* parent, int x, int y, int w,
     lv_obj_set_style_text_font(ta, &FONT_SMALL, LV_PART_MAIN);
     lv_obj_set_style_pad_ver(ta, 4, LV_PART_MAIN);
     lv_obj_set_style_pad_hor(ta, 6, LV_PART_MAIN);
+    // Cursor: los estilos de LVGL se resuelven por especificidad de estado.
+    // El tema tiene estilos para LV_PART_CURSOR|LV_STATE_FOCUSED que ganan
+    // sobre estilos base locales → cursor invisible con foco, visible sin él.
+    // Solución: ocultar en base y definir el estilo también con LV_STATE_FOCUSED.
+    lv_obj_set_style_border_width(ta, 0, LV_PART_CURSOR);
+    lv_obj_set_style_bg_opa(ta, LV_OPA_TRANSP, LV_PART_CURSOR | LV_STATE_FOCUSED);
+    lv_obj_set_style_border_side(ta, LV_BORDER_SIDE_LEFT, LV_PART_CURSOR | LV_STATE_FOCUSED);
+    lv_obj_set_style_border_color(ta, C_WHITE, LV_PART_CURSOR | LV_STATE_FOCUSED);
+    lv_obj_set_style_border_width(ta, 2, LV_PART_CURSOR | LV_STATE_FOCUSED);
     return ta;
 }
 
