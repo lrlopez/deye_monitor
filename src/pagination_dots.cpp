@@ -47,6 +47,7 @@ void pagination_dots_init(lv_obj_t* parent, int n) {
         lv_obj_set_pos(dot, s_center_x[i] - d/2, (BAR_H - d)/2);
         lv_obj_set_style_bg_color(dot, C_PASSIVE, 0);
         lv_obj_set_style_radius(dot, d/2, 0);
+        lv_obj_set_style_opa(dot, LV_OPA_50, 0);
 
         s_dots[i] = dot;
     }
@@ -69,5 +70,6 @@ void pagination_dots_set(int idx) {
         lv_obj_set_style_bg_color(s_dots[i],
                                    active ? C_ACTIVE : C_PASSIVE, 0);
         lv_obj_set_style_radius(s_dots[i], d/2, 0);
+        lv_obj_set_style_opa(s_dots[i], LV_OPA_50, 0);
     }
 }
