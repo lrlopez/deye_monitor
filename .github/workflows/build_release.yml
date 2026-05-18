@@ -177,21 +177,18 @@ jobs:
 
           ### 🔌 Instalación inicial por USB
 
-```bash
           # Clonar el repositorio y compilar localmente:
-          pio run --environment <entorno> --target upload
+          ```bash pio run --environment <entorno> --target upload```
 
           # O usando el fichero .bin directamente:
-          esptool.py --chip esp32s3 write_flash 0x10000 deye_monitor_<entorno>_<version>.bin
-```
+          ```bash esptool.py --chip esp32s3 write_flash 0x10000 deye_monitor_<entorno>_<version>.bin```
 
           ### ⚠️ Primera instalación
 
           En la primera instalación también es necesario flashear el filesystem:
 
-```bash
-          pio run --environment <entorno> --target uploadfs
-```
+          ```bash pio run --environment <entorno> --target uploadfs```
+          
           NOTES_EOF
 
           cat release_notes.md
