@@ -1,0 +1,711 @@
+# ⚡ Deye Monitor
+
+Monitor de instalación solar fotovoltaica con inversor híbrido **Deye SUN-6K-SG05** en tiempo real, con pantalla táctil, historial de hasta 4 años, servidor web integrado, notificaciones Telegram y actualización OTA.
+
+Desarrollado para **ESP32-S3** con pantalla táctil de 480×272 px usando **LVGL 9** y **PlatformIO**.
+
+---
+
+## 📋 Tabla de contenidos
+
+- [Características](#-características)
+- [Hardware requerido](#-hardware-requerido)
+- [Arquitectura del software](#-arquitectura-del-software)
+- [Estructura del proyecto](#-estructura-del-proyecto)
+- [Pantallas](#-pantallas)
+- [Servidor web](#-servidor-web)
+- [Bot de Telegram](#-bot-de-telegram)
+- [Almacenamiento](#-almacenamiento)
+- [Instalación y configuración](#-instalación-y-configuración)
+- [Primer arranque](#-primer-arranque)
+- [Actualización OTA](#-actualización-ota)
+- [Compilación CI/CD](#-compilación-cicd)
+- [API REST](#-api-rest)
+- [Resolución de problemas](#-resolución-de-problemas)
+- [Estructura de ficheros](#-estructura-de-ficheros)
+
+---
+
+## ✨ Características
+
+### Monitorización en tiempo real
+- Lectura de datos del inversor cada **5 segundos** vía protocolo **SolarmanV5** sobre TCP
+- Potencia PV (PV1 + PV2), red eléctrica, batería y carga
+- SOC de la batería con barra de progreso
+- Indicador de autoconsumo instantáneo con código de colores
+- Reloj en tiempo real sincronizado por NTP
+
+### Historial y estadísticas
+- Registro de medidas cada **5 minutos** alineado a intervalos exactos (XX:00, XX:05…)
+- Agregación horaria pre-calculada para generación instantánea de gráficas
+- Totales diarios con % de autoconsumo y autosuficiencia
+- Historial de hasta **1.461 días (4 años)** en flash LittleFS
+- Caché en **PSRAM** de toda la historia horaria y diaria para acceso sin latencia
+
+### Interfaz táctil (LVGL 9)
+- 4 pantallas deslizables horizontalmente con indicador de posición
+- Dashboard de tiempo real con 4 tarjetas
+- Estadísticas diarias con donuts de consumo/producción, navegable día a día
+- Gráfica diaria con líneas temporales de 5 variables
+- Pantalla de configuración con scroll y teclado virtual
+- Calendario mensual para selección directa de fecha
+- Modo nocturno con brillo configurable y horario automático
+- Pantalla de inicio (splash) con progreso de inicialización
+
+### Servidor web integrado
+- Dashboard HTML con actualización por AJAX cada 5 segundos (sin recargar la página)
+- Donuts SVG animados de autoconsumo/producción
+- Gráfica interactiva diaria con **Chart.js** y actualización incremental
+- Navegación día a día en el navegador
+- API REST con soporte de granularidad 5min/horario/diario
+- Actualización de firmware OTA vía navegador (`/update`)
+
+### Notificaciones Telegram
+- Alertas proactivas: batería baja/recuperada, solar arranca/para, corte de red, fallo logger
+- Comandos del bot para consultar datos desde cualquier lugar
+- Silenciado temporal de alertas
+- Cambio de umbrales en caliente sin reiniciar
+
+### Otras características
+- Configuración WiFi, IP del logger y parámetros por pantalla táctil, guardados en **NVS**
+- Detección y selección de redes WiFi disponibles
+- Reconexión WiFi automática sin bloquear la interfaz
+- Recuperación de datos en gaps por corte de alimentación
+- CI/CD con GitHub Actions: genera `.bin` por entorno en cada tag
+
+---
+
+## 🔧 Hardware requerido
+
+| Componente | Especificación |
+|---|---|
+| Microcontrolador | ESP32-S3 con 8 MB PSRAM y 16 MB Flash |
+| Pantalla | 480×272 px con controlador táctil capacitivo |
+| Inversor | Deye SUN-6K-SG05 (compatible con variantes SG03/SG04) |
+| Datalogger | Stick WiFi LSW3 incluido con el inversor (SolarmanV5) |
+| Red | WiFi 2.4 GHz compartida entre ESP32 y datalogger |
+
+### Conexiones
+
+El datalogger y el ESP32-S3 solo necesitan estar en la **misma red WiFi**. No se requiere ninguna conexión física adicional entre ellos. El protocolo de comunicación es SolarmanV5 sobre TCP puerto **8899**.
+
+### Identificar datos del datalogger
+
+- **IP:** Asignada por el router DHCP al stick WiFi (recomendable fijar por MAC)
+- **Número de serie:** Etiqueta adhesiva del stick WiFi o en la app SolarmanPV → Dispositivo → S/N (en decimal)
+
+---
+
+## 🏗️ Arquitectura del software
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        Core 1 (loop)                        │
+│  lv_timer_handler() → dashboard_tick() → backlight_tick()   │
+│  summary_screen_tick() → chart_screen_tick()                │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+┌──────────────────────────▼──────────────────────────────────┐
+│                        Core 0                               │
+│  ┌─────────────┐  ┌─────────────┐  ┌───────────────────┐    │
+│  │solarmanTask │  │webserverTask│  │telegram_bot task  │    │
+│  │             │  │             │  │                   │    │
+│  │ Polling 5s  │  │ HTTP server │  │ Polling + alertas │    │
+│  │ Grabación   │  │ /api/data   │  │ Comandos bot      │    │
+│  │ 5min/hrly/  │  │ /api/hist   │  │                   │    │
+│  │ daily       │  │ /chart      │  │                   │    │
+│  └──────┬──────┘  └─────┬───────┘  └─────────┬─────────┘    │
+│         │               │                    │              │
+│  ┌──────▼───────────────▼────────────────────▼──────────┐   │
+│  │               Mutex g_mutex                          │   │
+│  │         g_energy   g_daily   g_cfg                   │   │
+│  └──────────────────────┬───────────────────────────────┘   │
+└─────────────────────────┼───────────────────────────────────┘
+                          │
+         ┌────────────────▼──────────────────┐
+         │         Capa de datos             │
+         │                                   │
+         │  DataStore (LittleFS)             │
+         │  ├── /raw.bin   (5 min, 16B)      │
+         │  ├── /hrly.bin  (horario, 32B)    │
+         │  └── /day.bin   (diario, 32B)     │
+         │                                   │
+         │  PsramCache (PSRAM 8MB)           │
+         │  ├── Raw cache   (90 días, 405KB) │
+         │  ├── Hourly cache (1461d, 1.1GB)  │
+         │  └── Daily cache (1461d, 47KB)    │
+         └───────────────────────────────────┘
+```
+
+### Tareas FreeRTOS
+
+| Tarea | Core | Stack | Prioridad | Función |
+|---|---|---|---|---|
+| `loop()` | 1 | Sistema | — | Render LVGL, UI updates |
+| `solarmanTask` | 0 | 8 KB | 1 | Polling inversor, grabación |
+| `webserver_task` | 0 | 8 KB | 1 | Servidor HTTP |
+| `telegram_bot` | 0 | 16 KB | 1 | Bot Telegram + alertas |
+| `cache_bg` | 0 | 4 KB | 0 | Carga background de caché |
+
+---
+
+## 📁 Estructura del proyecto
+
+```
+deye-monitor/
+├── .github/
+│   ├── workflows/
+│   │   └── build_release.yml      # CI/CD: build y release automático
+│   └── scripts/
+│       └── get_envs.py            # Detecta entornos de platformio.ini
+├── src/
+│   ├── main.cpp                   # Setup, loop, solarmanTask
+│   ├── config.h                   # Constantes de compilación
+│   ├── ui_constants.h             # Geometría y fuentes escalables
+│   │
+│   ├── solarman.h / .cpp          # Protocolo SolarmanV5 + Modbus
+│   ├── storage.h / .cpp           # NVS: config, sesión, backlight
+│   ├── data_store.h / .cpp        # LittleFS: buffer circular triple
+│   ├── psram_cache.h / .cpp       # Caché en PSRAM de toda la historia
+│   ├── psram_alloc.h / .cpp       # Allocator LVGL → PSRAM
+│   │
+│   ├── dashboard.h / .cpp         # Pantalla 0: tiempo real
+│   ├── stats_screen.h / .cpp      # Pantalla 1: estadísticas diarias
+│   ├── summary_screen.h / .cpp    # Pantalla 2: resumen semanal
+│   ├── chart_screen.h / .cpp      # Pantalla 3: gráfica diaria
+│   ├── config_screen.h / .cpp     # Pantalla 4: configuración
+│   ├── splash_screen.h / .cpp     # Pantalla de inicio
+│   ├── calendar_popup.h / .cpp    # Calendario modal
+│   ├── pagination_dots.h / .cpp   # Indicador de posición
+│   ├── backlight.h / .cpp         # Control PWM de brillo
+│   │
+│   ├── web_server.h / .cpp        # Servidor HTTP + OTA
+│   └── telegram.h / .cpp         # Bot Telegram (UniversalTelegramBot)
+│
+├── partitions.csv                 # Particionado: NVS+OTA+App+LittleFS
+├── platformio.ini                 # Configuración PlatformIO
+└── lv_conf.h                      # Configuración LVGL 9
+```
+
+---
+
+## 📱 Pantallas
+
+### Pantalla 0 — Dashboard
+
+Vista principal con datos en tiempo real actualizados cada 5 segundos.
+
+```
+┌──────────────────────────────────────────────────────┐
+│ 10 May · 14:32:07              Autoconsumo 87% 🟢    │
+├─────────────────────┬────────────────────────────────┤
+│  ⚡ SOLAR           │  📶 RED                        │
+│                     │                                │
+│   2.340 W           │   -914 W                       │
+│ PV1:2340  PV2:0     │   Exportando a la red          │
+├─────────────────────┼────────────────────────────────┤
+│  🔋 BATERIA         │  🏠 CARGA                      │
+│                     │                                │
+│   99%               │   Consumo actual               │
+│  ████████████░░     │                                │
+│  -37 W · Cargando   │   360 W                        │
+└─────────────────────┴────────────────────────────────┘
+                    ● ○ ○ ○ ○
+```
+
+### Pantalla 1 — Estadísticas diarias
+
+Donuts de distribución de energía con navegación día a día y selector de calendario.
+
+- **CONSUMO:** Solar directo | Descarga batería | Importación
+- **PRODUCCIÓN:** Autoconsumo | Carga batería | Exportación
+- Tap en el título de fecha → volver a hoy
+- Botón 📅 → calendario mensual con días coloreados según disponibilidad de datos
+
+### Pantalla 2 — Resumen semanal
+
+Barras apiladas horizontales por día con dos niveles:
+- Barra superior: distribución del CONSUMO
+- Barra inferior: distribución de la PRODUCCIÓN
+- Tap en una fila → popup con valores exactos y porcentajes
+- Navegación semana a semana
+
+### Pantalla 3 — Gráfica diaria
+
+Gráfica de líneas con 5 series temporales por hora:
+
+| Serie | Color | Descripción |
+|---|---|---|
+| PV | Amarillo | Producción solar media |
+| Red | Azul | Intercambio con la red (+import/-export) |
+| Batería | Verde | Potencia de la batería (+desc/-carga) |
+| Carga | Violeta | Consumo del hogar |
+| SOC | Azul oscuro | Estado de carga batería (%) |
+
+- Tap en la gráfica → popup con valores de esa hora
+- Línea vertical indicadora
+- Autoescalado o escala fija configurable
+- Refresco automático al llegar las 00:00
+
+### Pantalla 4 — Configuración
+
+Formulario scrollable con teclado virtual:
+
+| Sección | Parámetros |
+|---|---|
+| RED WiFi | SSID (con escáner de redes) + contraseña |
+| INVERSOR | IP del datalogger + número de serie |
+| GRÁFICA | Autoescalado / máximo kW |
+| PANTALLA | Brillo normal/reducido, inactividad, horario nocturno |
+| TELEGRAM | Bot token, chat ID, umbral batería, tipos de alerta |
+| ESTADO RED | IP del ESP32, señal WiFi |
+
+Los cambios de WiFi/logger requieren reinicio. Los de brillo y Telegram se aplican en caliente.
+
+---
+
+## 🌐 Servidor web
+
+Accesible en `http://<ip-del-esp32>/`
+
+### Páginas
+
+| Ruta | Descripción |
+|---|---|
+| `/` | Dashboard con valores live y donuts SVG animados |
+| `/chart` | Gráfica diaria interactiva con Chart.js, navegable |
+| `/update` | Actualización de firmware OTA |
+
+### Actualización dinámica
+
+- Los valores instantáneos se refrescan **sin recargar la página** vía `fetch('/api/data')` cada 5 segundos
+- La gráfica de `/chart` usa actualizaciones **incrementales**: solo se piden los registros nuevos desde el último timestamp recibido (`from_ts`)
+- Al llegar las 00:00 se cambia automáticamente al nuevo día
+
+---
+
+## 🤖 Bot de Telegram
+
+Configura el bot en la pantalla de configuración con el token de @BotFather y tu chat ID.
+
+### Comandos disponibles
+
+| Comando | Descripción | Ejemplo respuesta |
+|---|---|---|
+| `/estado` | Valores instantáneos completos | ☀️ 2340W 🔌 -914W 🔋 99% 🏠 360W |
+| `/bateria` | SOC, potencia y estimación de autonomía | 🔋 99% · Cargando · ~2.1h para completa |
+| `/hoy` | Totales del día con % autoconsumo/autosuficiencia | ☀️ 28.4 kWh · Autoconsumo 71% |
+| `/dia YYYYMMDD` | Totales de cualquier fecha histórica | `/dia 20260508` |
+| `/semana` | Resumen de los últimos 7 días | Tabla con PV, consumo, balance |
+| `/sistema` | IP, WiFi, uptime, memoria, registros | IP: 192.168.1.34 · 6h uptime |
+| `/umbral N` | Cambiar umbral de alerta batería | `/umbral 20` |
+| `/silenciar` | Silenciar alertas durante 1 hora | 🔕 Alertas silenciadas |
+| `/activar` | Reactivar alertas | 🔔 Alertas activas |
+| `/ayuda` | Lista de comandos | — |
+
+### Alertas proactivas
+
+| Evento | Condición | Cooldown |
+|---|---|---|
+| Batería baja | SOC < umbral configurado | 30 min |
+| Batería recuperada | SOC > umbral + 10% | 30 min |
+| Solar arranca | PV pasa de 0 a >100W | 5 min |
+| Solar para | PV pasa de >100W a 0 | 5 min |
+| Fallo logger | 3 reintentos fallidos | 10 min |
+| Corte de red | Importación brusca sin solar | 10 min |
+| Red restaurada | Fin del corte | 10 min |
+
+---
+
+## 💾 Almacenamiento
+
+### Particionado flash (16 MB)
+
+```
+nvs        20 KB   Configuración, sesión, credenciales
+otadata     8 KB   Control de particiones OTA
+app0        4 MB   Firmware activo
+app1        4 MB   Firmware OTA pendiente
+spiffs      8 MB   LittleFS: histórico de medidas
+coredump   64 KB   Volcado de excepciones
+```
+
+### Estructura de datos en LittleFS
+
+Tres buffers circulares independientes, todos con el mismo número de días:
+
+| Fichero | Registro | Tamaño | Días | Uso |
+|---|---|---|---|---|
+| `/raw.bin` | `Record5Min` | 16 B | 1.461 | Potencias cada 5 min |
+| `/hrly.bin` | `HourlyRecord` | 32 B | 1.461 | Medias horarias pre-calculadas |
+| `/day.bin` | `DailyRecord` | 32 B | 1.461 | Totales diarios |
+
+**Capacidad total:** 1.461 días (~4 años con año bisiesto)
+
+```
+raw.bin:   1461 × 288 × 16 B = 6,730 KB
+hrly.bin:  1461 ×  24 × 32 B = 1,121 KB
+day.bin:   1461 ×   1 × 32 B =    46 KB
+─────────────────────────────────────────
+Total:                          7,897 KB < 8,192 KB (LittleFS) ✓
+```
+
+### Caché PSRAM (8 MB)
+
+| Caché | Contenido | Tamaño |
+|---|---|---|
+| Raw (90 días) | Registros recientes de 5 min | 405 KB |
+| Hourly (1.461 días) | **Toda** la historia horaria | 1.121 KB |
+| Daily (1.461 días) | **Toda** la historia diaria | 46 KB |
+| LVGL heap | Objetos de UI | 256 KB |
+| Canvas gráfica | Buffer de píxeles | 184 KB |
+
+La historia horaria completa reside en PSRAM, por lo que **la generación de gráficas no toca flash** independientemente del día seleccionado.
+
+### NVS (20 KB)
+
+| Namespace | Contenido |
+|---|---|
+| `cfg` | WiFi, IP logger, serial, gráfica, brillo, Telegram |
+| `hist_d` | Sesión (epoch del último registro) |
+
+---
+
+## ⚙️ Instalación y configuración
+
+### 1. Prerrequisitos
+
+- [PlatformIO](https://platformio.org/) (extensión VS Code o CLI)
+- Python 3.8+
+
+### 2. Clonar el repositorio
+
+```bash
+git clone https://github.com/tu-usuario/deye-monitor.git
+cd deye-monitor
+```
+
+### 3. Configurar `platformio.ini`
+
+```ini
+[env:esp32s3_480x270]
+platform    = espressif32 @ ^6.0.0
+board       = esp32-s3-devkitc-1
+framework   = arduino
+board_build.partitions  = partitions.csv
+board_build.filesystem  = littlefs
+board_build.arduino.memory_type = qio_opi   ; OPI PSRAM del ESP32-S3
+lib_deps    =
+    lvgl/lvgl @ ^9.2.0
+    witnessmenow/Universal-Arduino-Telegram-Bot @ ^1.3.0
+    bblanchon/ArduinoJson @ ^7.0.0
+build_flags =
+    -DLV_CONF_INCLUDE_SIMPLE
+    -DBOARD_HAS_PSRAM
+monitor_speed  = 115200
+upload_speed   = 921600
+```
+
+### 4. Configurar `lv_conf.h`
+
+```c
+// Fuentes necesarias
+#define LV_FONT_MONTSERRAT_12  1
+#define LV_FONT_MONTSERRAT_14  1
+#define LV_FONT_MONTSERRAT_28  1
+
+// Heap en PSRAM
+#define LV_USE_STDLIB_MALLOC   LV_STDLIB_CUSTOM
+#define LV_MEM_CUSTOM_INCLUDE  "psram_alloc.h"
+#define LV_MEM_CUSTOM_ALLOC    psram_malloc
+#define LV_MEM_CUSTOM_FREE     psram_free
+#define LV_MEM_CUSTOM_REALLOC  psram_realloc
+```
+
+### 5. Añadir tu driver de pantalla
+
+En `main.cpp`, en la zona marcada del `setup()`:
+
+```cpp
+// ── Tu código de display/touch aquí ──────────────────────────────
+lv_init();
+setup_display();     // tu función de inicialización del display
+setup_touch();       // tu función de inicialización del táctil
+lv_tick_set_cb([]() -> uint32_t { return millis(); });
+// ─────────────────────────────────────────────────────────────────
+```
+
+### 6. Compilar y subir
+
+```bash
+# Compilar
+pio run
+
+# Subir firmware
+pio run --target upload
+
+# Subir filesystem (primera vez obligatorio)
+pio run --target uploadfs
+
+# Monitor serie
+pio device monitor
+```
+
+---
+
+## 🚀 Primer arranque
+
+Al iniciar por primera vez, la pantalla de splash mostrará el progreso de inicialización. Con el NVS vacío, el dispositivo usará los valores por defecto de `config.h`.
+
+Para configurar WiFi y el datalogger:
+
+1. Desliza hasta la **pantalla de configuración** (última, a la derecha)
+2. Introduce el **SSID** de tu red (o pulsa 🔍 para escanear)
+3. Introduce la **contraseña WiFi**
+4. Introduce la **IP del datalogger** (ver etiqueta del stick WiFi o app SolarmanPV)
+5. Introduce el **número de serie** del datalogger (decimal, etiqueta del stick)
+6. Pulsa **Guardar** — el dispositivo se reiniciará y conectará
+
+### Verificar funcionamiento
+
+En el monitor serie deberías ver:
+
+```
+[WiFi] Conectado: 192.168.1.34
+[NTP] Sincronizado
+[Solarman] Conectando a 192.168.1.214:8899
+[Live] PV:705W Grid:-914W Bat:-37W(99%) Load:360W
+[Record] Startup ok: slot=92345 h=14 d=10
+```
+
+---
+
+## 🔄 Actualización OTA
+
+### Desde el navegador
+
+1. Accede a `http://<ip-del-esp32>/update`
+2. Selecciona el fichero `.bin` de la release
+3. Pulsa **Actualizar** — la barra de progreso mostrará el avance
+4. El ESP32 se reiniciará automáticamente al terminar
+
+> **Nota:** El fichero `.bin` para OTA es solo la partición de aplicación (no incluye el filesystem). Se genera en `.pio/build/<entorno>/firmware.bin`.
+
+### Desde PlatformIO
+
+```bash
+pio run --target upload --upload-port 192.168.1.34
+```
+
+---
+
+## 🤖 Compilación CI/CD
+
+Cada vez que se crea un tag con formato `v*`, GitHub Actions compila automáticamente un firmware por entorno y crea un release.
+
+### Crear un release
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+### Releases de prueba (pre-release)
+
+```bash
+git tag v1.1.0-beta
+git push origin v1.1.0-beta
+```
+
+Los tags con guión se marcan automáticamente como pre-release en GitHub.
+
+### Saltar un entorno en CI
+
+```ini
+[env:esp32s3_debug]
+; ...
+ci_skip = true   # Este entorno no se compilará en GitHub Actions
+```
+
+---
+
+## 🌐 API REST
+
+### Endpoints disponibles
+
+#### `GET /api/data`
+Valores actuales en tiempo real.
+
+```json
+{
+  "live": {
+    "pv_w": 2340, "pv1_w": 2340, "pv2_w": 0,
+    "grid_w": -914, "batt_w": -37, "batt_soc": 99,
+    "load_w": 360
+  },
+  "daily": {
+    "pv_kwh": 28.4, "export_kwh": 8.3, "import_kwh": 0.4,
+    "load_kwh": 12.6, "batt_charge_kwh": 8.2,
+    "batt_discharge_kwh": 1.1, "valid": true
+  }
+}
+```
+
+**Signo de `batt_w`:** positivo = descargando, negativo = cargando.  
+**Signo de `grid_w`:** positivo = importando, negativo = exportando.
+
+#### `GET /api/history`
+Histórico con múltiples granularidades.
+
+| Parámetro | Valores | Descripción |
+|---|---|---|
+| `date` | `YYYYMMDD` | Día concreto (por defecto: hoy) |
+| `granularity` | `5min`, `hourly`, `daily` | Resolución temporal |
+| `from_ts` | epoch Unix | Solo registros más recientes (5min) |
+| `from` | `YYYYMMDD` | Inicio del rango (daily) |
+| `to` | `YYYYMMDD` | Fin del rango (daily) |
+
+**Ejemplos:**
+
+```bash
+# Registros de 5 min de hoy
+GET /api/history?granularity=5min
+
+# Solo los nuevos desde el último recibido (actualización incremental)
+GET /api/history?granularity=5min&from_ts=1746870300
+
+# Datos horarios del 8 de mayo
+GET /api/history?date=20260508&granularity=hourly
+
+# Totales diarios de un rango
+GET /api/history?granularity=daily&from=20260501&to=20260510
+```
+
+#### `GET /api/status`
+Estado del almacenamiento.
+
+```json
+{
+  "raw":    {"count": 12456, "capacity": 420768},
+  "hourly": {"count": 1320,  "capacity": 35064},
+  "daily":  {"count": 55,    "capacity": 1461},
+  "psram_free_kb": 6163,
+  "wifi_rssi": -62,
+  "ip": "192.168.1.34"
+}
+```
+
+---
+
+## 🔍 Resolución de problemas
+
+### El inversor no responde
+
+```
+[Solarman] Timeout conectando al datalogger
+```
+
+- Verifica que el stick WiFi esté conectado a la misma red que el ESP32
+- Comprueba la IP en la app SolarmanPV → Dispositivo → Dirección IP
+- Verifica que el número de serie sea **decimal** (no hexadecimal)
+- Asegúrate de que el puerto **8899** no esté bloqueado por el router
+
+### Los datos son incorrectos (balance no cuadra)
+
+Activa el dump de registros temporalmente:
+
+```cpp
+// En solarman.cpp, fetchDailyStats():
+Serial0.println("[RAW Daily] Dump registros 70-108:");
+for (int i = 0; i < REG_DAILY_COUNT; i++)
+    Serial0.printf("  Reg %03d: %5u  (%.1f kWh)\n",
+                  REG_DAILY_BASE + i, regs[i], regs[i] * 0.1f);
+```
+
+Compara los valores con los que muestra la app SolarmanPV.
+
+### Sin datos en la web / donuts vacíos
+
+Verifica en el monitor serie:
+
+```
+[API] daily valid=0 pv=0.00 load=0.00
+```
+
+Si `valid=0`, la cache PSRAM aún no tiene datos del día. Espera al primer ciclo completo de `fetchDailyStats` (cada 60 segundos).
+
+### Pantalla congelada al abrir teclado
+
+Causa: el teclado se creó sobre el splash screen que fue eliminado. Solución: asegurar que el teclado se crea sobre `lv_layer_top()`:
+
+```cpp
+kb = lv_keyboard_create(lv_layer_top());
+```
+
+### PSRAM no detectada
+
+```
+[Cache] ERROR: PSRAM insuficiente
+```
+
+Verifica en `platformio.ini`:
+
+```ini
+board_build.arduino.memory_type = qio_opi   ; ESP32-S3 con OPI PSRAM
+```
+
+Y en `build_flags`:
+
+```ini
+-DBOARD_HAS_PSRAM
+-DCONFIG_SPIRAM_USE_CAPS_ALLOC=1
+```
+
+### Alertas Telegram no se envían
+
+Error de TLS habitual:
+
+```
+[-32512] SSL - Memory allocation failed
+```
+
+Causas y soluciones:
+
+1. `ledcAttach` + driver de pantalla pueden tocar el mismo pin → llamar `Backlight.begin()` **después** de `setup_display()`
+2. Heap fragmentado → aumentar stack de la tarea Telegram a 16 KB
+3. Buffers SSL reducidos: `client.setBufferSizes(4096, 1024)`
+
+---
+
+## 📐 Soporte multi-resolución
+
+El proyecto soporta cualquier resolución ≥ 480×270 px mediante defines de compilación:
+
+```ini
+[env:esp32s3_800x480]
+build_flags =
+    -DSCREEN_WIDTH=800
+    -DSCREEN_HEIGHT=480
+    -DFONT_SMALL_SIZE=16  -DFONT_SMALL=lv_font_montserrat_16
+    -DFONT_NORMAL_SIZE=20 -DFONT_NORMAL=lv_font_montserrat_20
+    -DFONT_LARGE_SIZE=36  -DFONT_LARGE=lv_font_montserrat_36
+```
+
+Toda la geometría de la UI se escala automáticamente mediante las macros `SX()`, `SY()` y `SS()` de `ui_constants.h`.
+
+---
+
+## 📄 Licencia
+
+MIT License — ver [LICENSE](LICENSE) para detalles.
+
+---
+
+## 🙏 Créditos
+
+- **LVGL** — Biblioteca de UI para microcontroladores ([lvgl.io](https://lvgl.io))
+- **UniversalTelegramBot** — Brian Lough ([GitHub](https://github.com/witnessmenow/Universal-Arduino-Telegram-Bot))
+- **ArduinoJson** — Benoît Blanchon ([arduinojson.org](https://arduinojson.org))
+- **Chart.js** — Gráficas web ([chartjs.org](https://www.chartjs.org))
+- **Comunidad Deye** — Mapa de registros Modbus ([deye-inverter-mqtt](https://github.com/kbialek/deye-inverter-mqtt))
+- **PlatformIO** — Entorno de desarrollo ([platformio.org](https://platformio.org))
