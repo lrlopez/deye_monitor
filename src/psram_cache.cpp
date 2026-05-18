@@ -25,7 +25,7 @@ bool PsramCache::begin() {
                      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
 
     if (!_raw_buf || !_raw_days || !_hrly_buf || !_hrly_days || !_day_buf) {
-        Serial.println("[Cache] ERROR: PSRAM insuficiente");
+        Serial0.println("[Cache] ERROR: PSRAM insuficiente");
         return false;
     }
 
@@ -35,7 +35,7 @@ bool PsramCache::begin() {
     memset(_hrly_days, 0, CACHE_HRLY_DAYS * sizeof(CachedHrlyDay));
     memset(_day_buf,   0, CACHE_DAY_SIZE);
 
-    Serial.printf("[Cache] PSRAM: raw=%uKB hrly=%uKB day=%uKB total=%uKB libre=%luKB\n",
+    Serial0.printf("[Cache] PSRAM: raw=%uKB hrly=%uKB day=%uKB total=%uKB libre=%luKB\n",
                   (unsigned)(CACHE_RAW_SIZE/1024),
                   (unsigned)(CACHE_HRLY_SIZE/1024),
                   (unsigned)(CACHE_DAY_SIZE/1024),
@@ -81,7 +81,7 @@ bool PsramCache::begin() {
 
 void PsramCache::_bg_task(void* pv) {
     PsramCache* self = static_cast<PsramCache*>(pv);
-    Serial.println("[Cache] Background: cargando historia horaria...");
+    Serial0.println("[Cache] Background: cargando historia horaria...");
 
     uint32_t loaded = 0;
     // De más antiguo a más reciente, saltando los últimos 7 (ya cargados en eager)
@@ -99,7 +99,7 @@ void PsramCache::_bg_task(void* pv) {
     for (int i = 0; i < CACHE_HRLY_DAYS; i++)
         if (self->_hrly_days[i].valid) valid++;
 
-    Serial.printf("[Cache] Background completado: %lu/%d días con datos horarios\n",
+    Serial0.printf("[Cache] Background completado: %lu/%d días con datos horarios\n",
                   (unsigned long)valid, CACHE_HRLY_DAYS);
     vTaskDelete(nullptr);
 }

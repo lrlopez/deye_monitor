@@ -11,7 +11,6 @@
 #define C_BATT_DIS  lv_color_hex(0xE74C3C)
 #define C_LOAD      lv_color_hex(0xBB6BD9)
 #define C_WHITE     lv_color_hex(0xEAEAEA)
-#define C_MUTED     lv_color_hex(0x6E7681)
 #define C_BAR_BG    lv_color_hex(0x21262D)
 
 // ── Punteros a widgets que se actualizan ──────────────────────────────────

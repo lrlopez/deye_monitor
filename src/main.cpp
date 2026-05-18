@@ -95,9 +95,10 @@ uint32_t esp_tick_get_cb() {
     return esp_timer_get_time() / 1000;
 }
 
-static EnergyData        g_energy;
-static DailyStats        g_daily;
-static SemaphoreHandle_t g_mutex;
+uint32_t                 g_uptime_start = 0;
+EnergyData               g_energy;
+DailyStats               g_daily;
+SemaphoreHandle_t        g_mutex;
 static volatile bool     g_energy_ready = false;
 static volatile bool     g_daily_ready  = false;
 static lv_obj_t*         g_tile_dash    = nullptr;
@@ -384,7 +385,8 @@ static void solarmanTask(void* /*pv*/) {
 // ── Setup ─────────────────────────────────────────────────────────────────
 void setup() {
     Serial0.begin(115200);
-    
+    g_uptime_start = millis();
+
     // ── Tu código de display/touch aquí (ya configurado) ─────────────────
     touch_init();
 

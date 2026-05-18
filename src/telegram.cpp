@@ -1,183 +1,515 @@
 #include "telegram.h"
+#include "config.h"
+#include "psram_cache.h"
+#include "data_store.h"
+#include "storage.h"
 #include <WiFiClientSecure.h>
-#include <HTTPClient.h>
+#include <UniversalTelegramBot.h>
+#include <ArduinoJson.h>
+#include <time.h>
 
-// Certificado raíz de api.telegram.org (DigiCert Global Root CA)
-// Válido hasta 2031 — actualizar si caduca
-/*static const char* TELEGRAM_CERT = R"=EOF=(
------BEGIN CERTIFICATE-----
-MIIDxTCCAq2gAwIBAgIBADANBgkqhkiG9w0BAQsFADCBgzELMAkGA1UEBhMCVVMx
-EDAOBgNVBAgTB0FyaXpvbmExEzARBgNVBAcTClNjb3R0c2RhbGUxGjAYBgNVBAoT
-EUdvRGFkZHkuY29tLCBJbmMuMTEwLwYDVQQDEyhHbyBEYWRkeSBSb290IENlcnRp
-ZmljYXRlIEF1dGhvcml0eSAtIEcyMB4XDTA5MDkwMTAwMDAwMFoXDTM3MTIzMTIz
-NTk1OVowgYMxCzAJBgNVBAYTAlVTMRAwDgYDVQQIEwdBcml6b25hMRMwEQYDVQQH
-EwpTY290dHNkYWxlMRowGAYDVQQKExFHb0RhZGR5LmNvbSwgSW5jLjExMC8GA1UE
-AxMoR28gRGFkZHkgUm9vdCBDZXJ0aWZpY2F0ZSBBdXRob3JpdHkgLSBHMjCCASIw
-DQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAL9xYgjx+lk09xvJGKP3gElY6SKD
-E6bFIEMBO4Tx5oVJnyfq9oQbTqC023CYxzIBsQU+B07u9PpPL1kwIuerGVZr4oAH
-/PMWdYA5UXvl+TW2dE6pjYIT5LY/qQOD+qK+ihVqf94Lw7YZFAXK6sOoBJQ7Rnwy
-DfMAZiLIjWltNowRGLfTshxgtDj6AozO091GB94KPutdfMh8+7ArU6SSYmlRJQVh
-GkSBjCypQ5Yj36w6gZoOKcUcqeldHraenjAKOc7xiID7S13MMuyFYkMlNAJWJwGR
-tDtwKj9useiciAF9n9T521NtYJ2/LOdYq7hfRvzOxBsDPAnrSTFcaUaz4EcCAwEA
-AaNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYE
-FDqahQcQZyi27/a9BUFuIMGU2g/eMA0GCSqGSIb3DQEBCwUAA4IBAQCZ21151fmX
-WWcDYfF+OwYxdS2hII5PZYe096acvNjpL9DbWu7PdIxztDhC2gV7+AJ1uP2lsdeu
-9tfeE8tTEH6KRtGX+rcuKxGrkLAngPnon1rpN5+r5N9ss4UXnT3ZJE95kTXWXwTr
-gIOrmgIttRD02JDHBHNA7XIloKmf7J6raBKZV8aPEjoJpL1E/QYVN8Gb5DKj7Tjo
-2GTzLH4U/ALqn83/B2gX2yKQOC16jdFU8WnjXzPKej17CuPKf1855eJ1usV2GDPO
-LPAvTK33sefOT6jEm0pUBsV/fdUID+Ic/n4XuKxe9tQWskMJDE32p2u0mYRlynqI
-4uJEvlz36hz1
------END CERTIFICATE-----
-)=EOF=";*/
+// ── Datos compartidos del inversor (extern desde main.cpp) ─────────────────
+extern EnergyData g_energy;
+extern DailyStats g_daily;
+extern SemaphoreHandle_t g_mutex;
+extern uint32_t g_uptime_start;   // millis() en el arranque
 
-static const char* API_HOST = "api.telegram.org";
-static SemaphoreHandle_t s_net_sem = nullptr;
+// ── Singleton ─────────────────────────────────────────────────────────────
+TelegramBot& TelegramBot::instance() {
+    static TelegramBot t; return t;
+}
 
-// ── Mensajes localizados ───────────────────────────────────────────────────
-static String fmt_msg(const AlertMsg& msg) {
+// ── Helpers de fecha ──────────────────────────────────────────────────────
+static uint32_t today_midnight() {
+    time_t now; time(&now);
+    struct tm t; localtime_r(&now, &t);
+    t.tm_hour = 0; t.tm_min = 0; t.tm_sec = 0; t.tm_isdst = -1;
+    return (uint32_t)mktime(&t);
+}
+
+static uint32_t parse_date(const String& s) {
+    if (s.length() != 8) return 0;
+    struct tm t{};
+    t.tm_year  = s.substring(0,4).toInt() - 1900;
+    t.tm_mon   = s.substring(4,6).toInt() - 1;
+    t.tm_mday  = s.substring(6,8).toInt();
+    t.tm_isdst = -1;
+    return (uint32_t)mktime(&t);
+}
+
+static String fmt_date(uint32_t ep) {
+    static const char* MESES[] = {
+        "Ene","Feb","Mar","Abr","May","Jun",
+        "Jul","Ago","Sep","Oct","Nov","Dic"
+    };
+    time_t t = (time_t)ep;
+    struct tm tm; localtime_r(&t, &tm);
+    char buf[20];
+    snprintf(buf, sizeof(buf), "%d %s %d",
+             tm.tm_mday, MESES[tm.tm_mon], tm.tm_year+1900);
+    return String(buf);
+}
+
+static String fmt_kwh(float v) {
+    char buf[12]; snprintf(buf, sizeof(buf), "%.2f kWh", v); return buf;
+}
+static String fmt_w(int v) {
+    char buf[12]; snprintf(buf, sizeof(buf), "%d W", v); return buf;
+}
+static String fmt_pct(float num, float den) {
+    if (den < 0.01f) return "N/A";
+    char buf[8]; snprintf(buf, sizeof(buf), "%.0f%%", num/den*100.0f);
+    return buf;
+}
+
+// ── Comandos ──────────────────────────────────────────────────────────────
+String TelegramBot::cmdEstado() const {
+    EnergyData e{};
+    if (g_mutex && xSemaphoreTake(g_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+        e = g_energy; xSemaphoreGive(g_mutex);
+    }
+    if (!e.valid) return "⚠️ Sin datos del inversor aún.";
+
+    // Signo de batería: positivo = descargando, negativo = cargando
+    const char* batt_icon = (e.batt_power < 0)  ? "🔋⬆️ Cargando" :
+                            (e.batt_power > 0)   ? "🔋⬇️ Descargando" :
+                                                   "🔋 En reposo";
+    const char* grid_icon = (e.grid_power > 0)   ? "🔌 Importando" :
+                            (e.grid_power < 0)   ? "🔌 Exportando" :
+                                                   "🔌 Sin intercambio";
+
+    char buf[512];
+    snprintf(buf, sizeof(buf),
+        "⚡ *Estado actual*\n\n"
+        "☀️ Solar: *%d W*\n"
+        "   PV1: %d W  •  PV2: %d W\n\n"
+        "%s: *%d W*\n\n"
+        "%s\n"
+        "   SOC: *%d%%*  •  %+d W\n\n"
+        "🏠 Carga: *%d W*",
+        (int)e.pv_power,
+        (int)e.pv1_power, (int)e.pv2_power,
+        grid_icon, abs((int)e.grid_power),
+        batt_icon, (int)e.batt_soc, (int)e.batt_power,
+        (int)e.load_power);
+    return String(buf);
+}
+
+String TelegramBot::cmdBateria() const {
+    EnergyData e{};
+    if (g_mutex && xSemaphoreTake(g_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+        e = g_energy; xSemaphoreGive(g_mutex);
+    }
+    if (!e.valid) return "⚠️ Sin datos.";
+
+    char buf[512];
+    const char* estado =
+        e.batt_power < 0 ? "🔋⬆️ Cargando" :
+        e.batt_power > 0 ? "🔋⬇️ Descargando" : "🔋 En reposo";
+
+    String autonomia = "N/A";
+    if (e.batt_power > 50) {
+        // Estimación simple: capacidad batería típica del SG05 = 
+        // SOC restante en Wh / potencia descarga
+        float wh_left = e.batt_soc / 100.0f * BATT_CAPACITY;
+        float hours = wh_left / e.batt_power;
+        char tmp[24];
+        snprintf(tmp, sizeof(tmp), "~%.1f h", hours);
+        autonomia = tmp;
+    } else if (e.batt_power < -50) {
+        float wh_empty = (100 - e.batt_soc) / 100.0f * BATT_CAPACITY;
+        float hours = wh_empty / (-e.batt_power);
+        char tmp[24];
+        snprintf(tmp, sizeof(tmp), "~%.1f h para carga completa", hours);
+        autonomia = tmp;
+    }
+
+    snprintf(buf, sizeof(buf),
+        "🔋 *Batería*\n\n"
+        "SOC: *%d%%*\n"
+        "Estado: %s\n"
+        "Potencia: *%+d W*\n"
+        "Estimación: %s",
+        (int)e.batt_soc, estado, (int)e.batt_power, autonomia.c_str());
+    return String(buf);
+}
+
+static String fmt_daily_stats(uint32_t dep, const DailyStats& d,
+                               const char* title) {
+    if (!d.valid) return "⚠️ Sin datos para ese día.";
+
+    float pv_direct = d.load_kwh - d.batt_discharge_kwh - d.import_kwh;
+    if (pv_direct < 0) pv_direct = 0;
+    float autosuf = (d.load_kwh > 0.01f)
+                    ? (d.load_kwh - d.import_kwh) / d.load_kwh * 100.0f : 0;
+    float autocon = (d.pv_kwh > 0.01f)
+                    ? (d.pv_kwh - d.export_kwh) / d.pv_kwh * 100.0f : 0;
+    if (autosuf < 0) autosuf = 0; if (autosuf > 100) autosuf = 100;
+    if (autocon < 0) autocon = 0; if (autocon > 100) autocon = 100;
+
+    char buf[768];
+    snprintf(buf, sizeof(buf),
+        "%s\n📅 %s\n\n"
+        "☀️ Producción: *%.2f kWh*\n"
+        "🏠 Consumo: *%.2f kWh*\n\n"
+        "🔌 Exportado: *%.2f kWh*\n"
+        "🔌 Importado: *%.2f kWh*\n\n"
+        "🔋 Carga bat.: *%.2f kWh*\n"
+        "🔋 Descarga bat.: *%.2f kWh*\n\n"
+        "📊 Autoconsumo: *%.0f%%*\n"
+        "📊 Autosuficiencia: *%.0f%%*",
+        title, fmt_date(dep).c_str(),
+        d.pv_kwh, d.load_kwh,
+        d.export_kwh, d.import_kwh,
+        d.batt_charge_kwh, d.batt_discharge_kwh,
+        autocon, autosuf);
+    return String(buf);
+}
+
+String TelegramBot::cmdHoy() const {
+    uint32_t dep = today_midnight();
+    DailyRecord dr{};
+    DailyStats d{};
+    if (Cache.getDaily(dep, dr)) {
+        d = daily_record_to_stats(dr);
+    } else {
+        // Fallback a g_daily
+        if (g_mutex && xSemaphoreTake(g_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+            d = g_daily; xSemaphoreGive(g_mutex);
+        }
+    }
+    return fmt_daily_stats(dep, d, "📈 *Energía de hoy*");
+}
+
+String TelegramBot::cmdDia(const String& date_str) const {
+    uint32_t dep = parse_date(date_str);
+    if (!dep) return "❌ Formato incorrecto. Usa: /dia YYYYMMDD";
+
+    uint32_t today = today_midnight();
+    if (dep > today) return "❌ Esa fecha es en el futuro.";
+
+    DailyRecord dr{};
+    DailyStats d{};
+    if (Cache.getDaily(dep, dr)) d = daily_record_to_stats(dr);
+    else if (!Store.readDaily(dep, dr))
+        return "ℹ️ Sin datos para " + fmt_date(dep) + ".";
+    else d = daily_record_to_stats(dr);
+
+    return fmt_daily_stats(dep, d, "📅 *Energía del día*");
+}
+
+String TelegramBot::cmdSemana() const {
+    uint32_t today = today_midnight();
+    String msg = "📊 *Resumen semanal*\n\n";
+
+    static const char* DIAS[] = {"Dom","Lun","Mar","Mié","Jue","Vie","Sáb"};
+
+    float total_pv = 0, total_exp = 0, total_imp = 0, total_load = 0;
+
+    for (int i = 6; i >= 0; i--) {
+        uint32_t dep = today - (uint32_t)i * 86400;
+        DailyRecord dr{};
+        DailyStats d{};
+        if (Cache.getDaily(dep, dr)) d = daily_record_to_stats(dr);
+
+        time_t t = (time_t)dep;
+        struct tm tm; localtime_r(&t, &tm);
+        const char* dia = DIAS[tm.tm_wday];
+
+        if (!d.valid) {
+            msg += String(dia) + " " + String(tm.tm_mday) + ": _sin datos_\n";
+            continue;
+        }
+
+        float autosuf = (d.load_kwh > 0.01f)
+                        ? (d.load_kwh - d.import_kwh) / d.load_kwh * 100.0f : 0;
+        if (autosuf < 0) autosuf = 0;
+
+        char line[80];
+        snprintf(line, sizeof(line),
+            "%s %d: ☀️%.1f 🏠%.1f 🔌%+.1f (%0.f%%)\n",
+            dia, tm.tm_mday,
+            d.pv_kwh, d.load_kwh,
+            d.export_kwh - d.import_kwh,
+            autosuf);
+        msg += line;
+
+        total_pv   += d.pv_kwh;
+        total_exp  += d.export_kwh;
+        total_imp  += d.import_kwh;
+        total_load += d.load_kwh;
+    }
+
+    float autosuf_total = (total_load > 0.01f)
+                          ? (total_load - total_imp) / total_load * 100.0f : 0;
+    char total[120];
+    snprintf(total, sizeof(total),
+        "\n*Total:* ☀️%.1f kWh  🏠%.1f kWh\n"
+        "Export: %.1f  Import: %.1f\n"
+        "Autosuficiencia: *%.0f%%*",
+        total_pv, total_load, total_exp, total_imp, autosuf_total);
+    msg += total;
+    return msg;
+}
+
+String TelegramBot::cmdSistema() const {
+    uint32_t uptime_s = (millis() - g_uptime_start) / 1000;
+    uint32_t h = uptime_s / 3600;
+    uint32_t m = (uptime_s % 3600) / 60;
+
+    char buf[512];
+    snprintf(buf, sizeof(buf),
+        "🖥️ *Sistema*\n\n"
+        "📡 IP: `%s`\n"
+        "📶 WiFi: %d dBm\n"
+        "⏱️ Uptime: %luh %lum\n\n"
+        "💾 SRAM libre: %lu KB\n"
+        "💾 PSRAM libre: %lu KB\n"
+        "📂 Flash usada: %lu KB / %lu KB\n\n"
+        "📊 Registros: raw=%lu hrly=%lu day=%lu",
+        WiFi.localIP().toString().c_str(),
+        (int)WiFi.RSSI(),
+        (unsigned long)h, (unsigned long)m,
+        (unsigned long)ESP.getFreeHeap() / 1024,
+        (unsigned long)ESP.getFreePsram() / 1024,
+        (unsigned long)LittleFS.usedBytes() / 1024,
+        (unsigned long)LittleFS.totalBytes() / 1024,
+        (unsigned long)Store.getRawCount(),
+        (unsigned long)Store.getHourlyCount(),
+        (unsigned long)Store.getDailyCount());
+    return String(buf);
+}
+
+String TelegramBot::cmdAyuda() const {
+    return
+        "⚡ *" APP_NAME "* — Comandos disponibles\n\n"
+        "/estado — Valores instantáneos\n"
+        "/bateria — Estado detallado de la batería\n"
+        "/hoy — Totales del día con %%\n"
+        "/dia _YYYYMMDD_ — Totales de una fecha\n"
+        "/semana — Resumen de los últimos 7 días\n"
+        "/sistema — Info del dispositivo\n"
+        "/umbral _N_ — Cambiar umbral alerta bat. (%%)\n"
+        "/silenciar — Silenciar alertas 1 hora\n"
+        "/activar — Reactivar alertas\n"
+        "/ayuda — Este mensaje";
+}
+
+// ── Formateo de alertas proactivas ────────────────────────────────────────
+String TelegramBot::fmtAlert(const AlertMsg& msg) const {
     switch (msg.type) {
     case AlertType::BATT_LOW:
-        return String("⚠️ *Batería baja*\n")
-             + "SOC actual: *" + msg.value + "%*\n"
-             + "La batería ha bajado del umbral configurado.";
-
+        return "⚠️ *Batería baja*\nSOC: *" + String(msg.value) + "%*\n"
+               + cmdBateria().substring(cmdBateria().indexOf('\n')+1);
     case AlertType::BATT_RECOVERED:
-        return String("✅ *Batería recuperada*\n")
-             + "SOC actual: *" + msg.value + "%*\n"
-             + "La batería ha vuelto a nivel normal.";
-
+        return "✅ *Batería recuperada*\nSOC: *" + String(msg.value) + "%*";
     case AlertType::SOLAR_START:
-        return String("☀️ *Producción solar iniciada*\n")
-             + "Potencia actual: *" + msg.value + " W*";
-
+        return "☀️ *Producción solar iniciada*\n" + fmt_w(msg.value);
     case AlertType::SOLAR_STOP:
-        return String("🌙 *Producción solar detenida*\n")
-             + "El inversor ha dejado de generar energía.";
-
+        return "🌙 *Producción solar detenida*";
     case AlertType::LOGGER_FAIL:
-        return String("❌ *Sin comunicación con el inversor*\n")
-             + "No se puede conectar al datalogger.\n"
-             + "Verifica la red WiFi y la IP del logger.";
-
+        return "❌ *Sin comunicación con el inversor*\n"
+               "Verifica la red y la IP del datalogger.";
     case AlertType::GRID_OUTAGE:
-        return String("🔴 *Posible corte de red eléctrica*\n")
-             + "Importación detectada: *" + msg.value + " W*\n"
-             + "El sistema está operando con batería/solar.";
-
+        return "🔴 *Posible corte de red eléctrica*\n"
+               "Importación: " + fmt_w(msg.value);
     case AlertType::GRID_RESTORED:
-        return String("🟢 *Red eléctrica restaurada*\n")
-             + "El sistema vuelve a operar con red.";
-
+        return "🟢 *Red eléctrica restaurada*";
     case AlertType::TEST:
-        return String("🔔 *Notificaciones Telegram activas*\n")
-             + "El monitor Deye está funcionando correctamente.";
-
+        return "🔔 *Notificaciones activas*\n" APP_NAME " funcionando correctamente.";
     default:
-        return "📡 Evento desconocido";
+        return "📡 Evento";
     }
 }
 
-// ── Tarea FreeRTOS ─────────────────────────────────────────────────────────
-void TelegramNotifier::task(void* pv) {
-    TelegramNotifier* self = static_cast<TelegramNotifier*>(pv);
-    AlertMsg msg;
+// ── Procesado de comandos entrantes ───────────────────────────────────────
+void TelegramBot::handleCommand(const String& text, const String& from_id) {
+    // Seguridad: solo responder al chat_id configurado
+    if (from_id != String(_chat_id)) {
+        Serial0.printf("[Bot] Mensaje de chat_id no autorizado: %s\n",
+                      from_id.c_str());
+        return;
+    }
+
+    String cmd = text;
+    cmd.trim();
+
+    String response;
+
+    if (cmd == "/estado" || cmd == "/start") {
+        response = cmdEstado();
+    } else if (cmd == "/bateria") {
+        response = cmdBateria();
+    } else if (cmd == "/hoy") {
+        response = cmdHoy();
+    } else if (cmd.startsWith("/dia")) {
+        String arg = cmd.substring(4); arg.trim();
+        response = cmdDia(arg);
+    } else if (cmd == "/semana") {
+        response = cmdSemana();
+    } else if (cmd == "/sistema") {
+        response = cmdSistema();
+    } else if (cmd.startsWith("/umbral")) {
+        String arg = cmd.substring(7); arg.trim();
+        int n = arg.toInt();
+        if (n < 5 || n > 95) {
+            response = "❌ Umbral debe estar entre 5 y 95.";
+        } else {
+            TelegramConfig cfg = Storage.loadTelegramConfig();
+            cfg.batt_threshold = (uint8_t)n;
+            Storage.saveTelegramConfig(cfg);
+            char buf[64];
+            snprintf(buf, sizeof(buf),
+                "✅ Umbral de batería cambiado a *%d%%*", n);
+            response = buf;
+        }
+    } else if (cmd == "/silenciar") {
+        silence(3600);
+        response = "🔕 Alertas silenciadas durante 1 hora.";
+    } else if (cmd == "/activar") {
+        unsilence();
+        response = "🔔 Alertas reactivadas.";
+    } else if (cmd == "/ayuda" || cmd == "/help") {
+        response = cmdAyuda();
+    } else {
+        response = "❓ Comando no reconocido. Usa /ayuda para ver los disponibles.";
+    }
+
+    enqueueMessage(response);
+}
+
+// ── Envío de mensaje ──────────────────────────────────────────────────────
+bool TelegramBot::sendMsg(const String& text) {
+    // El bot object se crea en la tarea — no podemos usarlo aquí directamente
+    // Se encola como alerta especial... pero con UniversalTelegramBot
+    // el envío se hace desde la tarea directamente.
+    // Esta función no se usa externamente — solo para compatibilidad.
+    return false;
+}
+
+// ── Tarea FreeRTOS ────────────────────────────────────────────────────────
+void TelegramBot::task(void* pv) {
+    TelegramBot* self = static_cast<TelegramBot*>(pv);
+
+    // Esperar NTP
+    Serial0.println("[Bot] Esperando NTP...");
+    uint32_t t0 = millis();
+    while (time(nullptr) < 1700000000UL && millis() - t0 < 30000)
+        vTaskDelay(pdMS_TO_TICKS(1000));
+
+    // Inicializar cliente HTTPS
+    WiFiClientSecure client;
+    client.setInsecure();
+
+    UniversalTelegramBot bot(self->_token, client);
+
+    // Registrar comandos en BotFather automáticamente
+    bot.setMyCommands(
+        "[{\"command\":\"estado\",\"description\":\"Valores instantáneos\"},"
+        "{\"command\":\"bateria\",\"description\":\"Estado de la batería\"},"
+        "{\"command\":\"hoy\",\"description\":\"Totales del día\"},"
+        "{\"command\":\"dia\",\"description\":\"Totales de una fecha (YYYYMMDD)\"},"
+        "{\"command\":\"semana\",\"description\":\"Resumen semanal\"},"
+        "{\"command\":\"sistema\",\"description\":\"Info del dispositivo\"},"
+        "{\"command\":\"umbral\",\"description\":\"Cambiar umbral alerta batería\"},"
+        "{\"command\":\"silenciar\",\"description\":\"Silenciar alertas 1h\"},"
+        "{\"command\":\"activar\",\"description\":\"Reactivar alertas\"},"
+        "{\"command\":\"ayuda\",\"description\":\"Lista de comandos\"}]"
+    );
+
+    Serial0.println("[Bot] Iniciado y escuchando comandos.");
+
+    uint32_t last_poll = 0;
 
     for (;;) {
-        // Espera bloqueante — no consume CPU mientras no hay alertas
-        if (xQueueReceive(self->_queue, &msg, portMAX_DELAY) == pdTRUE) {
-            if (!self->isConfigured()) continue;
-            if (WiFi.status() != WL_CONNECTED) continue;
-
-            String text = fmt_msg(msg);
-            bool ok = self->sendMessage(text);
-            Serial0.printf("[Telegram] %s → %s\n",
-                          text.substring(0, 30).c_str(), ok ? "OK" : "FALLO");
-
-            // Si falla, reintenta una vez tras 5 s
-            if (!ok) {
-                vTaskDelay(pdMS_TO_TICKS(5000));
-                self->sendMessage(text);
+        // ── Procesar alertas proactivas de la cola ────────────────────────
+        AlertMsg alert{};
+        while (xQueueReceive(self->_alert_queue, &alert, 0) == pdTRUE) {
+            if (WiFi.status() != WL_CONNECTED) break;
+            if (time(nullptr) < 1700000000UL) break;
+            if (!self->isSilenced()) {
+                String msg = self->fmtAlert(alert);
+                bot.sendMessage(self->_chat_id, msg, "Markdown");
+                vTaskDelay(pdMS_TO_TICKS(500));   // evitar flood
             }
         }
-    }
-}
 
-// ── HTTP POST a la API de Telegram ────────────────────────────────────────
-bool TelegramNotifier::sendMessage(const String& text) {
-    WiFiClientSecure client;
-
-    time_t now; time(&now);
-    if (now < 1700000000UL) {
-        Serial0.println("[Telegram] NTP no sincronizado");
-        return false;
-    }
-
-    if (s_net_sem) {
-        if (xSemaphoreTake(s_net_sem, pdMS_TO_TICKS(500)) != pdTRUE) {
-            return false;
+        String* msg_ptr = nullptr;
+        while (xQueueReceive(self->_message_queue, &msg_ptr, 0) == pdTRUE) {
+            if (msg_ptr != nullptr) {
+                if (WiFi.status() == WL_CONNECTED && time(nullptr) > 1700000000UL) {
+                    bot.sendMessage(self->_chat_id, *msg_ptr, "Markdown");
+                    vTaskDelay(pdMS_TO_TICKS(500));   // evitar flood
+                }
+                delete msg_ptr; // Liberamos la memoria del String dinámico
+            }
         }
+
+        // ── Polling de mensajes entrantes cada 1 segundo ──────────────────
+        if (millis() - last_poll >= 1000 &&
+            WiFi.status() == WL_CONNECTED &&
+            time(nullptr) > 1700000000UL) {
+            last_poll = millis();
+
+            int n = bot.getUpdates(bot.last_message_received + 1);
+            while (n > 0) {
+                for (int i = 0; i < n; i++) {
+                    String chat_id = bot.messages[i].chat_id;
+                    String text    = bot.messages[i].text;
+                    Serial0.printf("[Bot] Cmd de %s: %s\n",
+                                  chat_id.c_str(), text.c_str());
+                    self->handleCommand(text, chat_id);
+                }
+                n = bot.getUpdates(bot.last_message_received + 1);
+            }
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
-
-    client.setInsecure();
-    //client.setCACert(TELEGRAM_CERT);
-    client.setTimeout(10);
-
-    HTTPClient http;
-    String url = String("https://") + API_HOST
-               + "/bot" + _token + "/sendMessage";
-
-    http.begin(client, url);
-    http.addHeader("Content-Type", "application/json");
-
-    // Escapado básico de comillas en el texto
-    String escaped = text;
-    escaped.replace("\"", "\\\"");
-    escaped.replace("\n", "\\n");  // IMPORTANTE: Escapa saltos de línea    
-    String body = String("{\"chat_id\":\"") + _chat_id
-                + "\",\"text\":\"" + escaped
-                + "\",\"parse_mode\":\"Markdown\"}";
-
-    int code = http.POST(body);
-    bool ok  = (code == 200);
-    
-    Serial0.println("URL: " + url);
-    Serial0.println("Body: " + body);
-    Serial0.printf("Response: %d\n", code);
-    
-    http.end();
-
-    if (s_net_sem) xSemaphoreGive(s_net_sem);
-
-    return ok;
 }
 
 // ── API pública ───────────────────────────────────────────────────────────
-void TelegramNotifier::begin(const char* token, const char* chat_id) {
-    Serial0.println("[Telegram] Iniciando...");
+void TelegramBot::begin(const char* token, const char* chat_id) {
     setCredentials(token, chat_id);
-
-    _queue = xQueueCreate(8, sizeof(AlertMsg));
-    xTaskCreatePinnedToCore(task, "telegram",
-                             8 * 1024, this, 1, nullptr, 0);
-    Serial0.printf("[Telegram] Iniciado. Configurado: %s\n",
-                  isConfigured() ? "SI" : "NO");
+    _alert_queue = xQueueCreate(16, sizeof(AlertMsg));
+    _message_queue = xQueueCreate(16, sizeof(String *));
+    xTaskCreatePinnedToCore(task, "telegram_bot",
+                             16384,   // 16 KB: UniversalTelegramBot + ArduinoJson
+                             this, 1, nullptr, 0);
 }
 
-void TelegramNotifier::setCredentials(const char* token, const char* chat_id) {
+void TelegramBot::setCredentials(const char* token, const char* chat_id) {
     strncpy(_token,   token,   sizeof(_token)   - 1);
     strncpy(_chat_id, chat_id, sizeof(_chat_id) - 1);
 }
 
-bool TelegramNotifier::enqueue(AlertType type, int32_t value) {
-    if (!_queue) return false;
+bool TelegramBot::enqueueAlert(AlertType type, int32_t value) {
+    if (!_alert_queue) return false;
     AlertMsg msg{type, value};
-    return xQueueSend(_queue, &msg, 0) == pdTRUE;
+    return xQueueSend(_alert_queue, &msg, 0) == pdTRUE;
 }
 
-bool TelegramNotifier::isConfigured() const {
+bool TelegramBot::enqueueMessage(const String& msg) {
+    if (!_message_queue) return false;
+    
+    // Creamos una copia dinámica del String en el Heap
+    String* msg_ptr = new String(msg);
+    
+    // Enviamos el PUNTERO a la cola
+    if (xQueueSend(_message_queue, &msg_ptr, 0) != pdTRUE) {
+        delete msg_ptr; // Si la cola está llena, liberamos para evitar fugas
+        return false;
+    }
+    return true;
+}
+
+void TelegramBot::silence(uint32_t seconds) {
+    _silence_until = millis() + seconds * 1000;
+}
+void TelegramBot::unsilence() { _silence_until = 0; }
+bool TelegramBot::isSilenced() const {
+    return _silence_until > 0 && millis() < _silence_until;
+}
+bool TelegramBot::isConfigured() const {
     return _token[0] != '\0' && _chat_id[0] != '\0';
-}
-
-void TelegramNotifier::setNetworkSemaphore(SemaphoreHandle_t sem) {
-    s_net_sem = sem;
 }

@@ -196,6 +196,8 @@ static void load_day() {
 
     uint32_t dep = day_epoch_from_offset(s_offset);
 
+    s_day_epoch_loaded = dep;
+    
     // Leer directamente las 24 horas pre-agregadas desde PSRAM
     const HourlyRecord* hr = Cache.getHourly(dep);
     if (hr) {
@@ -560,7 +562,7 @@ void chart_screen_tick() {
     if (s_offset == 0) {
         uint32_t current_today = day_epoch_from_offset(0);
         if (current_today != s_day_epoch_loaded) {
-            Serial.println("[Chart] Cambio de dia, recargando...");
+            Serial0.println("[Chart] Cambio de dia, recargando...");
             load_day();
             s_last_tick = millis();
             return;

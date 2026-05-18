@@ -1,9 +1,10 @@
 #pragma once
 #include <Arduino.h>
-#include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 
-// Tipos de alerta
+static float const BATT_CAPACITY = 15000.0f;
+
+// ── Tipos de alerta proactiva (sin cambios respecto a la API anterior) ────
 enum class AlertType : uint8_t {
     BATT_LOW = 0,
     BATT_RECOVERED,
@@ -12,46 +13,66 @@ enum class AlertType : uint8_t {
     LOGGER_FAIL,
     GRID_OUTAGE,
     GRID_RESTORED,
-    TEST              // botón de prueba desde config
+    TEST
 };
 
 struct AlertMsg {
     AlertType type;
-    int32_t   value;   // dato contextual (SOC, W, etc.)
+    int32_t   value;
 };
 
-class TelegramNotifier {
+// ── TelegramBot ───────────────────────────────────────────────────────────
+class TelegramBot {
 public:
-    static TelegramNotifier& instance() {
-        static TelegramNotifier t;
-        return t;
-    }
+    static TelegramBot& instance();
 
-    // Llamar desde setup() después de WiFi conectado
+    // Llamar en setup() tras WiFi conectado
     void begin(const char* token, const char* chat_id);
 
-    // Actualizar credenciales sin reiniciar (tras guardar config)
+    // Actualizar credenciales en caliente
     void setCredentials(const char* token, const char* chat_id);
 
-    // Encolar una alerta (seguro llamar desde cualquier tarea)
-    bool enqueue(AlertType type, int32_t value = 0);
+    // Encolar alerta proactiva (thread-safe)
+    bool enqueueAlert(AlertType type, int32_t value = 0);
 
-    // Comprobar si las notificaciones están configuradas
+    // Encolar mensaje (thread-safe)
+    bool enqueueMessage(const String& msg);
+
+    // Silenciar/activar alertas
+    void silence(uint32_t seconds = 3600);
+    void unsilence();
+    bool isSilenced() const;
+
     bool isConfigured() const;
 
-    // Establecer semáforo para no coincidir con el polling
-    void setNetworkSemaphore(SemaphoreHandle_t sem);
-
 private:
-    TelegramNotifier() = default;
+    TelegramBot() = default;
 
-    char          _token[128]   = {};
-    char          _chat_id[32]  = {};
-    QueueHandle_t _queue        = nullptr;
+    char          _token[64]   = {};
+    char          _chat_id[32] = {};
+    QueueHandle_t _alert_queue = nullptr;
+    QueueHandle_t _message_queue = nullptr;
+    uint32_t      _silence_until = 0;
 
     static void task(void* pv);
-    bool        sendMessage(const String& text);
-    String      formatMessage(const AlertMsg& msg);
+
+    // Procesado de comandos
+    void handleCommand(const String& cmd, const String& from_id);
+
+    // Respuestas a comandos
+    String cmdEstado()   const;
+    String cmdHoy()      const;
+    String cmdDia(const String& date_str) const;
+    String cmdSemana()   const;
+    String cmdBateria()  const;
+    String cmdSistema()  const;
+    String cmdAyuda()    const;
+
+    // Formateo de alertas proactivas
+    String fmtAlert(const AlertMsg& msg) const;
+
+    // Envío (interno, llamado desde la tarea)
+    bool sendMsg(const String& text);
 };
 
-#define Telegram TelegramNotifier::instance()
+#define Telegram TelegramBot::instance()

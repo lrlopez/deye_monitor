@@ -71,7 +71,7 @@ bool DataStore::begin() {
     _mutex = xSemaphoreCreateMutex();
 
     if (!LittleFS.begin(true, "/littlefs", 10, "spiffs")) {
-        Serial.println("[Store] Error montando LittleFS"); return false;
+        Serial0.println("[Store] Error montando LittleFS"); return false;
     }
 
     // Alojar índice de días en PSRAM
@@ -79,7 +79,7 @@ bool DataStore::begin() {
                DAY_IDX_MAX * sizeof(DayIdx),
                MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!_day_idx) {
-        Serial.println("[Store] Sin PSRAM para índice de días"); return false;
+        Serial0.println("[Store] Sin PSRAM para índice de días"); return false;
     }
     memset(_day_idx, 0, 730 * sizeof(DayIdx));
 
@@ -105,11 +105,11 @@ bool DataStore::begin() {
     if (!open_rw(_f_raw,  "/raw.bin",  _raw.capacity,  sizeof(Record5Min))  ||
         !open_rw(_f_hrly, "/hrly.bin", _hrly.capacity, sizeof(HourlyRecord)) ||
         !open_rw(_f_day,  "/day.bin",  _day.capacity,  sizeof(DailyRecord))) {
-        Serial.println("[Store] Error abriendo ficheros");
+        Serial0.println("[Store] Error abriendo ficheros");
         return false;
     }
 
-    Serial.printf("[Store] Ficheros abiertos. raw=%lu hrly=%lu day=%lu registros\n",
+    Serial0.printf("[Store] Ficheros abiertos. raw=%lu hrly=%lu day=%lu registros\n",
                   (unsigned long)_raw.count,
                   (unsigned long)_hrly.count,
                   (unsigned long)_day.count);
@@ -169,7 +169,7 @@ void DataStore::_day_idx_load() {
             prev_dep = dep;
         }
     }
-    Serial.printf("[Store] Índice de días: %lu entradas\n",
+    Serial0.printf("[Store] Índice de días: %lu entradas\n",
                   (unsigned long)_day_idx_count);
 }
 

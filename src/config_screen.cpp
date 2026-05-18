@@ -667,7 +667,7 @@ void config_screen_init(lv_obj_t* parent) {
     lv_obj_set_style_bg_color(btn_test, lv_color_hex(0x2D7D46), 0);
     lv_obj_set_style_radius(btn_test, 6, 0);
     lv_obj_add_event_cb(btn_test, [](lv_event_t*) {
-        Telegram.enqueue(AlertType::TEST);
+        Telegram.enqueueAlert(AlertType::TEST);
     }, LV_EVENT_CLICKED, nullptr);
     lv_obj_t* CFG_LBL_test = lv_label_create(btn_test);
     lv_label_set_text(CFG_LBL_test, LV_SYMBOL_BELL " Probar");
