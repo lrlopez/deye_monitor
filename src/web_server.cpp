@@ -42,7 +42,7 @@ void webserver_set_data(SemaphoreHandle_t mutex,
 static void handle_root() {
     String html;
     html.reserve(5120);
-    html += R"(<!DOCTYPE html><html lang="es"><head>
+    html += R"EOF(<!DOCTYPE html><html lang="es"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Deye Monitor</title>
@@ -104,9 +104,9 @@ static void handle_root() {
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" href="/icon.svg">
 </head><body>
-<h1>&#9889; Deye Monitor <span style="font-size:.7rem;color:var(--muted);font-weight:400" id="h1-ver">v--</span> – )";
+<h1>&#9889; Deye Monitor <span style="font-size:.7rem;color:var(--muted);font-weight:400" id="h1-ver">v--</span> – )EOF";
     html += WiFi.localIP().toString();
-    html += R"(</h1>
+    html += R"EOF(</h1>
 
 <!-- Live cards -->
 <div class="grid">
@@ -369,7 +369,7 @@ fetch('/api/status').then(r=>r.json()).then(s=>{
 setInterval(refresh, 5000);         // refresco de datos cada 5 s
 setInterval(clock,   1000);         // reloj cada 1 s
 </script>
-</body></html>)";
+</body></html>)EOF";
 
     server.send(200, "text/html; charset=utf-8", html);
 }
