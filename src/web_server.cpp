@@ -1200,7 +1200,7 @@ static void handle_admin_post() {
         lip.toCharArray(cfg.logger_ip, sizeof(cfg.logger_ip));
     String lser = server.arg("logger_serial");
     if (!lser.isEmpty())
-        cfg.logger_serial = (uint32_t)lser.toInt();
+        cfg.logger_serial = (uint32_t)strtoul(lser.c_str(), nullptr, 10);
 
     // ── Gráfica ───────────────────────────────────────────────────────────
     ChartConfig ccfg{};
