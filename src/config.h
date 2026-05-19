@@ -1,16 +1,16 @@
 #pragma once
 
 // ── WiFi ──────────────────────────────────────────────────────────────────
-#define WIFI_SSID   "WiFi"
-#define WIFI_PASS   "1234567890"
+#define WIFI_SSID   ""
+#define WIFI_PASS   ""
 
 // ── Datalogger Deye (stick WiFi LSW3) ────────────────────────────────────
 // IP asignada por tu router al stick WiFi del inversor
-#define LOGGER_IP     "192.168.1.214"
+#define LOGGER_IP     "192.168.1.x"
 #define LOGGER_PORT   8899
 // Nº de serie del datalogger en DECIMAL (está en la etiqueta del stick
 // o en la app SolarmanPV → Dispositivo → S/N)
-#define LOGGER_SERIAL 1234567890UL
+#define LOGGER_SERIAL 0UL
 
 // ── Aplicación ────────────────────────────────────────────────────────────
 #define APP_NAME        "Deye Monitor"
