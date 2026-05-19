@@ -118,9 +118,12 @@ public:
     uint32_t readAllDaily(DailyRecord* out, uint32_t max);
 
     // ── Capacidad ─────────────────────────────────────────────────────────
-    uint32_t getRawCount()    const { return _raw_count;    }
-    uint32_t getHourlyCount() const { return _hrly_count;   }
-    uint32_t getDailyCount()  const { return _day_count;    }
+    uint32_t getRawCount()       const { return _raw_count;       }
+    uint32_t getHourlyCount()    const { return _hrly_count;      }
+    uint32_t getDailyCount()     const { return _day_count;       }
+    uint32_t getRawCapacity()    const { return _raw.capacity;    }
+    uint32_t getHourlyCapacity() const { return _hrly.capacity;   }
+    uint32_t getDailyCapacity()  const { return _day.capacity;    }
 
 private:
     DataStore() = default;

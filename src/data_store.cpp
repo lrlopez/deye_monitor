@@ -70,9 +70,8 @@ bool DataStore::readAt(const CircBuf& cb, uint32_t phys,
 bool DataStore::begin() {
     _mutex = xSemaphoreCreateMutex();
 
-    if (!LittleFS.begin(true, "/littlefs", 10, "spiffs")) {
-        Serial0.println("[Store] Error montando LittleFS"); return false;
-    }
+    // LittleFS debe estar montado por el llamador antes de invocar begin().
+    // main.cpp lo monta en setup() antes de llamar a Store.begin().
 
     // Alojar índice de días en PSRAM
     _day_idx = (DayIdx*)heap_caps_malloc(
@@ -388,7 +387,7 @@ uint32_t DataStore::getLastRawDayEpoch() const {
 bool DataStore::getLastRecord(Record5Min& out) {
     if (xSemaphoreTake(_mutex, pdMS_TO_TICKS(500)) != pdTRUE) return false;
     bool ok = (_raw.count > 0) &&
-              readAt(_raw, physIdx(_raw, _raw.count - 1), &out, sizeof(out));
+              readRaw(physIdx(_raw, _raw.count - 1), out);
     xSemaphoreGive(_mutex);
     return ok;
 }
