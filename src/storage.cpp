@@ -140,3 +140,18 @@ BacklightConfig StorageManager::loadBacklightConfig() {
     p.end();
     return cfg;
 }
+
+void StorageManager::saveAdminPassword(const char* password) {
+    Preferences p;
+    p.begin(NS_CFG, false);
+    p.putString("web_pass", password);
+    p.end();
+}
+
+String StorageManager::loadAdminPassword() {
+    Preferences p;
+    p.begin(NS_CFG, true);
+    String s = p.getString("web_pass", "");
+    p.end();
+    return s;
+}

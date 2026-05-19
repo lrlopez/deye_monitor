@@ -43,6 +43,8 @@ static lv_obj_t* s_lbl_bl_nstart     = nullptr;
 static lv_obj_t* s_slider_bl_nend    = nullptr;
 static lv_obj_t* s_lbl_bl_nend       = nullptr;
 
+static lv_obj_t* s_ta_admin_pass     = nullptr;
+
 // ── Widgets scan WiFi ─────────────────────────────────────────────────────
 static lv_obj_t*  scan_btn;
 static lv_obj_t*  scan_btn_lbl;
@@ -439,6 +441,15 @@ static void save_btn_cb(lv_event_t* /*e*/) {
     Storage.saveTelegramConfig(tgcfg);
     // Backlight ya guardado por setConfig()
 
+    // Contraseña de acceso web (solo si se escribió algo)
+    if (s_ta_admin_pass) {
+        const char* ap = lv_textarea_get_text(s_ta_admin_pass);
+        if (strlen(ap) > 0) {
+            Storage.saveAdminPassword(ap);
+            lv_textarea_set_text(s_ta_admin_pass, "");
+        }
+    }
+
     if (needs_restart) {
         lv_label_set_text(lbl_status, LV_SYMBOL_OK " Guardado. Reiniciando...");
         lv_obj_set_style_text_color(lbl_status, C_OK, 0);
@@ -697,9 +708,11 @@ void config_screen_init(lv_obj_t* parent) {
 
     // Altura: pad×2(20) + título(14) + 5 filas×(SS16+6) + 4 checkboxes(22×2)
     // = 20 + 14 + 5×22 + 2×22 = 20+14+110+44 = 188 → redondeamos a 190
-    const int SEC_BL_Y = SEC_TG_Y + SEC_TG_H + SY(4);
-    const int SEC_BL_H = SY(190);
-    const int BTN_Y        = SEC_BL_Y + SEC_BL_H + SY(8);
+    const int SEC_BL_Y    = SEC_TG_Y + SEC_TG_H + SY(4);
+    const int SEC_BL_H    = SY(190);
+    const int SEC_ADMIN_Y = SEC_BL_Y + SEC_BL_H + SY(4);
+    const int SEC_ADMIN_H = CFG_FIELD_H + CFG_SEC_PAD*2 + SY(50);
+    const int BTN_Y       = SEC_ADMIN_Y + SEC_ADMIN_H + SY(8);
 
     lv_obj_t* sec_bl = make_section(parent,
                         LV_SYMBOL_EYE_OPEN " PANTALLA", SEC_BL_Y, SEC_BL_H);
@@ -800,6 +813,29 @@ void config_screen_init(lv_obj_t* parent) {
     lv_obj_set_style_pad_all(s_slider_bl_nend, SX(4),                   LV_PART_KNOB);
     lv_obj_add_event_cb(s_slider_bl_nend, bl_nend_cb,
                          LV_EVENT_VALUE_CHANGED, s_lbl_bl_nend);
+
+    // ── Sección Acceso Web ────────────────────────────────────────────────────
+    {
+        String pw_status = Storage.loadAdminPassword().isEmpty()
+            ? "Sin proteccion (acceso libre)"
+            : "Contrasena configurada";
+
+        lv_obj_t* sec_admin = make_section(parent,
+            LV_SYMBOL_WARNING " ACCESO WEB", SEC_ADMIN_Y, SEC_ADMIN_H);
+
+        lv_obj_t* lbl_pw_st = lv_label_create(sec_admin);
+        lv_obj_set_pos(lbl_pw_st, 0, SY(18));
+        lv_obj_set_style_text_font(lbl_pw_st, &FONT_SMALL, 0);
+        lv_obj_set_style_text_color(lbl_pw_st,
+            Storage.loadAdminPassword().isEmpty() ? C_WARN : C_OK, 0);
+        lv_label_set_text(lbl_pw_st, pw_status.c_str());
+
+        make_row_label(sec_admin, SY(40), "Nueva clave");
+        s_ta_admin_pass = make_field(sec_admin, CFG_LBL_W, SY(40),
+            CFG_SECTION_W - CFG_LBL_W - CFG_SEC_PAD*2, true, "Nueva contrasena web...");
+        lv_obj_add_event_cb(s_ta_admin_pass, ta_event_cb, LV_EVENT_FOCUSED,   nullptr);
+        lv_obj_add_event_cb(s_ta_admin_pass, ta_event_cb, LV_EVENT_DEFOCUSED, nullptr);
+    }
 
     // ── Botón Guardar + status  (bajan acordes) ───────────────────────────────
     lbl_status = lv_label_create(parent);

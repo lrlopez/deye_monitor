@@ -74,8 +74,12 @@ public:
     
     // ── Brillo de la pantalla ─────────────────────────────────────────────
     void            saveBacklightConfig(const BacklightConfig& cfg);
-    BacklightConfig loadBacklightConfig(); 
-    
+    BacklightConfig loadBacklightConfig();
+
+    // ── Contraseña de administración web ─────────────────────────────────
+    void   saveAdminPassword(const char* password);
+    String loadAdminPassword();
+
 private:
     StorageManager() = default;
 };

@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include <time.h>
 #include "web_server.h"
+#include "storage.h"
 #include "data_store.h"
 #include "psram_cache.h"
 
@@ -10,6 +11,21 @@ static WebServer          server(80);
 static SemaphoreHandle_t  s_mutex   = nullptr;
 static const EnergyData*  s_energy  = nullptr;
 static const DailyStats*  s_daily   = nullptr;
+static bool               s_ota_authed = false;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auth helper – devuelve true si el acceso está permitido.
+// Si hay contraseña en NVS, exige HTTP Basic Auth con usuario "admin".
+// Si no hay contraseña, el acceso es libre.
+// ─────────────────────────────────────────────────────────────────────────────
+static bool check_auth() {
+    String pw = Storage.loadAdminPassword();
+    if (pw.isEmpty()) return true;
+    if (server.authenticate("admin", pw.c_str())) return true;
+    server.requestAuthentication(BASIC_AUTH, "Deye Admin",
+        "Acceso restringido. Configure la contraseña desde la pantalla táctil.");
+    return false;
+}
 
 void webserver_set_data(SemaphoreHandle_t mutex,
                         const EnergyData* energy,
@@ -194,7 +210,9 @@ static void handle_root() {
 <footer>
   <a href="/chart">&#128200; Gr&aacute;fica diaria</a>
   &nbsp;|&nbsp;
-  <a href="/update">&#8593; Actualizar firmware</a>
+  <a href="/admin">&#9881; Admin</a>
+  &nbsp;|&nbsp;
+  <a href="/update">&#8593; Firmware</a>
 </footer>
 
 <!-- Status bar fija -->
@@ -325,6 +343,7 @@ setInterval(clock,   1000);         // reloj cada 1 s
 // Ruta GET /update  →  Formulario de subida OTA
 // ═════════════════════════════════════════════════════════════════════════
 static void handle_update_get() {
+    if (!check_auth()) return;
     String html = R"(<!DOCTYPE html><html lang="es"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -566,6 +585,7 @@ footer a{color:var(--accent);text-decoration:none}
 
 <footer>
   <a href="/">&#8592; Dashboard</a> &nbsp;|&nbsp;
+  <a href="/admin">&#9881; Admin</a> &nbsp;|&nbsp;
   <a href="/update">&#8593; Firmware</a>
 </footer>
 <div id="status"><span id="status-dot"></span><span id="status-txt">Cargando...</span></div>)=EOF=");
@@ -920,8 +940,11 @@ fetch('/api/latest_date').then(r => r.json()).then(d => {
 // Ruta POST /update  →  Recepción del .bin y flasheo
 // ═════════════════════════════════════════════════════════════════════════
 static void handle_update_post() {
-    // La respuesta se envía desde el handler de upload (abajo)
-    // Aquí solo reiniciamos si todo fue bien
+    if (!s_ota_authed) {
+        server.requestAuthentication(BASIC_AUTH, "Deye Admin",
+            "Acceso restringido. Configure la contraseña desde la pantalla táctil.");
+        return;
+    }
     if (Update.hasError()) return;
     server.sendHeader("Connection", "close");
     server.send(200, "text/plain", "OK");
@@ -933,32 +956,305 @@ static void handle_upload() {
     HTTPUpload& upload = server.upload();
 
     if (upload.status == UPLOAD_FILE_START) {
+        // Verificar autenticación antes de iniciar la actualización
+        String pw = Storage.loadAdminPassword();
+        s_ota_authed = pw.isEmpty() || server.authenticate("admin", pw.c_str());
+        if (!s_ota_authed) {
+            Serial0.println("[OTA] Rechazado: acceso denegado");
+            return;
+        }
         Serial0.printf("[OTA] Inicio: %s (%u bytes)\n",
                       upload.filename.c_str(), upload.totalSize);
-        // UPDATE_SIZE_UNKNOWN → Update calcula el espacio él solo
         if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
             Serial0.print("[OTA] Error al iniciar: ");
             Update.printError(Serial);
         }
 
     } else if (upload.status == UPLOAD_FILE_WRITE) {
+        if (!s_ota_authed) return;
         if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
             Serial0.print("[OTA] Error escribiendo: ");
             Update.printError(Serial);
         }
 
     } else if (upload.status == UPLOAD_FILE_END) {
+        if (!s_ota_authed) return;
         if (Update.end(true)) {
             Serial0.printf("[OTA] Completado: %u bytes. Reiniciando.\n",
                           upload.totalSize);
         } else {
             Serial0.print("[OTA] Error al finalizar: ");
             Update.printError(Serial);
-            // Informar al cliente del error
             server.send(500, "text/plain",
                         String("Error OTA: ") + Update.errorString());
         }
     }
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// Ruta GET /admin  →  Panel de administración (protegido por contraseña)
+// ═════════════════════════════════════════════════════════════════════════
+static void handle_admin_get() {
+    if (!check_auth()) return;
+
+    AppConfig       cfg   = {}; Storage.loadConfig(cfg);
+    ChartConfig     ccfg  = Storage.loadChartConfig();
+    TelegramConfig  tgcfg = Storage.loadTelegramConfig();
+    BacklightConfig blcfg = Storage.loadBacklightConfig();
+    bool saved = server.hasArg("saved");
+
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server.sendHeader("Content-Type", "text/html; charset=utf-8");
+    server.send(200);
+
+    // ── HEAD + CSS + JS ───────────────────────────────────────────────────
+    server.sendContent(R"=EOF=(<!DOCTYPE html><html lang="es"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin – Deye Monitor</title>
+<style>
+:root{--bg:#0d1117;--card:#161b22;--accent:#4a9eff;--ok:#2ecc71;
+      --warn:#f5c518;--muted:#6e7681;--white:#eaeaea;--border:#21262d}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--white);font-family:system-ui,sans-serif;
+     padding:16px;max-width:700px;margin:0 auto 60px}
+h1{font-size:1.05rem;color:var(--accent);margin-bottom:14px;text-align:center}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;
+      padding:14px;margin-bottom:10px}
+.card h2{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;
+         color:var(--accent);margin-bottom:12px}
+.row{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+.lbl{min-width:140px;font-size:.8rem;color:var(--muted);flex-shrink:0}
+input[type=text]{background:#21262d;border:1px solid var(--border);border-radius:6px;
+                 color:var(--white);padding:6px 10px;font-size:.85rem;flex:1}
+input[type=range]{flex:1;accent-color:var(--accent)}
+output{min-width:52px;font-size:.8rem;color:var(--white);font-family:monospace}
+.cb-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.cb-row label{font-size:.85rem;color:var(--white)}
+input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px}
+.info{font-size:.8rem;color:var(--muted)}
+.banner{padding:9px 13px;border-radius:8px;margin-bottom:12px;font-size:.85rem}
+.ok-b{background:#1a3a2a;border:1px solid var(--ok);color:var(--ok)}
+.actions{display:flex;gap:10px;margin-top:14px}
+.btn{border:none;border-radius:6px;padding:9px 18px;font-size:.9rem;
+     cursor:pointer;flex:1;font-weight:600}
+.btn-save{background:#1f6feb;color:#fff}.btn-save:hover{background:#388bfd}
+.btn-rst{background:#2d1f0e;color:#f5c518;border:1px solid #5a3e10}
+a.back{color:var(--accent);font-size:.8rem;display:block;text-align:center;
+       margin-top:14px;text-decoration:none}
+</style>
+<script>
+function fmtPct(v){return(+v)+'%';}
+function fmtKW(v){return(+v)+' kW';}
+function fmtS10(v){return(+v*10)+'s';}
+function fmtH(v){v=+v;return(v<10?'0':'')+v+'h';}
+</script>
+</head><body>)=EOF=");
+
+    // ── Helpers locales ──────────────────────────────────────────────────
+    // Envía un campo de rango: etiqueta, nombre, min, max, valor actual, fn formato, unidad
+    auto send_range = [](const char* lbl, const char* name,
+                         int mn, int mx, int val, const char* fn,
+                         int disp, const char* unit) {
+        server.sendContent("<div class='row'><span class='lbl'>");
+        server.sendContent(lbl);
+        server.sendContent("</span><input type='range' name='");
+        server.sendContent(name);
+        char b[40]; snprintf(b, sizeof(b), "' min='%d' max='%d' value='%d'", mn, mx, val);
+        server.sendContent(b);
+        server.sendContent(" oninput='this.nextElementSibling.textContent=");
+        server.sendContent(fn);
+        server.sendContent("(this.value)'><output>");
+        char v[12]; snprintf(v, sizeof(v), "%d%s", disp, unit);
+        server.sendContent(v);
+        server.sendContent("</output></div>");
+    };
+    // Envía un checkbox
+    auto send_cb = [](const char* name, const char* id,
+                      bool chk, const char* lbl) {
+        server.sendContent("<div class='cb-row'><input type='checkbox' name='");
+        server.sendContent(name);
+        server.sendContent("' id='");
+        server.sendContent(id);
+        server.sendContent("'");
+        if (chk) server.sendContent(" checked");
+        server.sendContent("><label for='");
+        server.sendContent(id);
+        server.sendContent("'>");
+        server.sendContent(lbl);
+        server.sendContent("</label></div>");
+    };
+
+    // ── Título + banner ───────────────────────────────────────────────────
+    server.sendContent("<h1>&#9881; Administraci&oacute;n &ndash; Deye Monitor</h1>");
+    if (saved)
+        server.sendContent("<div class='banner ok-b'>&#10003; Configuraci&oacute;n guardada.</div>");
+
+    server.sendContent("<form method='post' action='/admin'>");
+
+    // ── WiFi (solo lectura) ───────────────────────────────────────────────
+    server.sendContent("<div class='card'><h2>&#128267; Red WiFi</h2>"
+        "<p class='info'>Red: <strong style='color:var(--white)'>");
+    server.sendContent(cfg.wifi_ssid);
+    server.sendContent("</strong> &nbsp;&mdash;&nbsp; "
+        "Solo visible. Configurable desde la pantalla t&aacute;ctil.</p></div>");
+
+    // ── Inversor ──────────────────────────────────────────────────────────
+    server.sendContent("<div class='card'><h2>&#128268; Inversor / Datalogger</h2>"
+        "<div class='row'><span class='lbl'>IP Logger</span>"
+        "<input type='text' name='logger_ip' value='");
+    server.sendContent(cfg.logger_ip);
+    server.sendContent("' maxlength='23'></div>"
+        "<div class='row'><span class='lbl'>N&ordm; Serie (decimal)</span>"
+        "<input type='text' name='logger_serial' value='");
+    { char b[12]; snprintf(b, sizeof(b), "%lu", (unsigned long)cfg.logger_serial);
+      server.sendContent(b); }
+    server.sendContent("' maxlength='15'></div></div>");
+
+    // ── Gráfica ───────────────────────────────────────────────────────────
+    server.sendContent("<div class='card'><h2>&#128200; Gr&aacute;fica</h2>");
+    send_cb("ch_auto", "cha", ccfg.autoscale, "Autoescalado");
+    send_range("M&aacute;x kW", "ch_kw", 1, 20, ccfg.max_kw, "fmtKW",
+               ccfg.max_kw, " kW");
+    server.sendContent("</div>");
+
+    // ── Telegram ──────────────────────────────────────────────────────────
+    server.sendContent("<div class='card'><h2>&#128276; Telegram</h2>"
+        "<div class='row'><span class='lbl'>Bot Token</span>"
+        "<input type='text' name='tg_token' value='");
+    server.sendContent(tgcfg.token);
+    server.sendContent("' maxlength='63'></div>"
+        "<div class='row'><span class='lbl'>Chat ID</span>"
+        "<input type='text' name='tg_chatid' value='");
+    server.sendContent(tgcfg.chat_id);
+    server.sendContent("' maxlength='31'></div>");
+    send_range("Alerta bater&iacute;a", "tg_batt", 5, 50,
+               tgcfg.batt_threshold, "fmtPct",
+               tgcfg.batt_threshold, "%");
+    send_cb("tg_solar", "tgs", tgcfg.notify_solar,
+            "Notificar inicio/fin solar");
+    send_cb("tg_grid",  "tgg", tgcfg.notify_grid,
+            "Notificar corte/restauraci&oacute;n red");
+    send_cb("tg_log",   "tgl", tgcfg.notify_logger,
+            "Notificar fallo logger");
+    server.sendContent("</div>");
+
+    // ── Pantalla ──────────────────────────────────────────────────────────
+    server.sendContent("<div class='card'><h2>&#128261; Pantalla</h2>");
+    send_range("Brillo normal",   "bl_norm",  10, 100,
+               blcfg.normal_pct,  "fmtPct", blcfg.normal_pct,  "%");
+    send_range("Brillo reducido", "bl_red",    0, 100,
+               blcfg.reduced_pct, "fmtPct", blcfg.reduced_pct, "%");
+    send_cb("bl_inact", "bli", blcfg.inactivity_enabled,
+            "Reducir brillo con inactividad");
+    send_range("Tiempo espera", "bl_isecs", 1, 18,
+               blcfg.inactivity_div10, "fmtS10",
+               blcfg.inactivity_div10 * 10, "s");
+    send_cb("bl_night", "bln", blcfg.night_enabled,
+            "Horario nocturno");
+    // Inicio y fin de noche usan fmtH (padding con cero)
+    server.sendContent("<div class='row'><span class='lbl'>Inicio noche</span>"
+        "<input type='range' name='bl_nstart' min='0' max='23' value='");
+    { char b[4]; snprintf(b, sizeof(b), "%d", (int)blcfg.night_start_h);
+      server.sendContent(b); }
+    server.sendContent("' oninput='this.nextElementSibling.textContent=fmtH(this.value)'>"
+        "<output>");
+    { char b[6]; snprintf(b, sizeof(b), "%02dh", (int)blcfg.night_start_h);
+      server.sendContent(b); }
+    server.sendContent("</output></div>"
+        "<div class='row'><span class='lbl'>Fin noche</span>"
+        "<input type='range' name='bl_nend' min='0' max='23' value='");
+    { char b[4]; snprintf(b, sizeof(b), "%d", (int)blcfg.night_end_h);
+      server.sendContent(b); }
+    server.sendContent("' oninput='this.nextElementSibling.textContent=fmtH(this.value)'>"
+        "<output>");
+    { char b[6]; snprintf(b, sizeof(b), "%02dh", (int)blcfg.night_end_h);
+      server.sendContent(b); }
+    server.sendContent("</output></div></div>");
+
+    // ── Botón guardar ─────────────────────────────────────────────────────
+    server.sendContent("<div class='actions'>"
+        "<button type='submit' class='btn btn-save'>&#128190; Guardar cambios</button>"
+        "</div></form>");
+
+    // ── Reiniciar (formulario independiente) ──────────────────────────────
+    server.sendContent("<form method='post' action='/api/restart'>"
+        "<div class='actions'>"
+        "<button type='submit' class='btn btn-rst'>&#9851; Reiniciar dispositivo</button>"
+        "</div></form>");
+
+    server.sendContent("<a class='back' href='/'>&#8592; Volver al dashboard</a>"
+        "</body></html>");
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// Ruta POST /admin  →  Guarda la configuración recibida del formulario
+// ═════════════════════════════════════════════════════════════════════════
+static void handle_admin_post() {
+    if (!check_auth()) return;
+
+    // ── Inversor ──────────────────────────────────────────────────────────
+    AppConfig cfg{}; Storage.loadConfig(cfg);   // preservar WiFi
+    String lip = server.arg("logger_ip");
+    if (lip.length() > 0 && lip.length() < sizeof(cfg.logger_ip))
+        lip.toCharArray(cfg.logger_ip, sizeof(cfg.logger_ip));
+    String lser = server.arg("logger_serial");
+    if (!lser.isEmpty())
+        cfg.logger_serial = (uint32_t)lser.toInt();
+
+    // ── Gráfica ───────────────────────────────────────────────────────────
+    ChartConfig ccfg{};
+    ccfg.autoscale = server.hasArg("ch_auto");
+    int ch_kw = server.arg("ch_kw").toInt();
+    ccfg.max_kw = (uint8_t)(ch_kw < 1 ? 1 : ch_kw > 20 ? 20 : ch_kw);
+
+    // ── Telegram ──────────────────────────────────────────────────────────
+    TelegramConfig tgcfg{};
+    server.arg("tg_token") .toCharArray(tgcfg.token,   sizeof(tgcfg.token)   - 1);
+    server.arg("tg_chatid").toCharArray(tgcfg.chat_id, sizeof(tgcfg.chat_id) - 1);
+    int tb = server.arg("tg_batt").toInt();
+    tgcfg.batt_threshold = (uint8_t)(tb < 5 ? 5 : tb > 50 ? 50 : tb);
+    tgcfg.notify_solar   = server.hasArg("tg_solar");
+    tgcfg.notify_grid    = server.hasArg("tg_grid");
+    tgcfg.notify_logger  = server.hasArg("tg_log");
+
+    // ── Pantalla ──────────────────────────────────────────────────────────
+    auto clamp = [](int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; };
+    BacklightConfig blcfg{};
+    blcfg.normal_pct         = (uint8_t)clamp(server.arg("bl_norm").toInt(),   10, 100);
+    blcfg.reduced_pct        = (uint8_t)clamp(server.arg("bl_red").toInt(),     0, 100);
+    blcfg.inactivity_enabled = server.hasArg("bl_inact");
+    blcfg.inactivity_div10   = (uint8_t)clamp(server.arg("bl_isecs").toInt(),   1,  18);
+    blcfg.night_enabled      = server.hasArg("bl_night");
+    blcfg.night_start_h      = (uint8_t)clamp(server.arg("bl_nstart").toInt(),  0,  23);
+    blcfg.night_end_h        = (uint8_t)clamp(server.arg("bl_nend").toInt(),    0,  23);
+
+    // ── Persistir ─────────────────────────────────────────────────────────
+    Storage.saveConfig(cfg);
+    Storage.saveChartConfig(ccfg);
+    Storage.saveTelegramConfig(tgcfg);
+    Storage.saveBacklightConfig(blcfg);
+
+    server.sendHeader("Location", "/admin?saved=1");
+    server.send(303, "text/plain", "Guardado");
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// Ruta POST /api/restart  →  Reinicia el dispositivo
+// ═════════════════════════════════════════════════════════════════════════
+static void handle_restart() {
+    if (!check_auth()) return;
+    server.send(200, "text/html; charset=utf-8",
+        "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
+        "<meta http-equiv='refresh' content='6;url=/'>"
+        "<title>Reiniciando...</title></head>"
+        "<body style='background:#0d1117;color:#eaeaea;font-family:system-ui;"
+        "text-align:center;padding:40px'>"
+        "<h2 style='color:#4a9eff'>Reiniciando dispositivo...</h2>"
+        "<p style='color:#6e7681;margin-top:10px'>"
+        "La p&aacute;gina se redirigir&aacute; al dashboard en 6 segundos.</p>"
+        "</body></html>");
+    delay(500);
+    ESP.restart();
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -1251,7 +1547,10 @@ void webserver_begin() {
     server.on("/api/history",     HTTP_GET, handle_history);
     server.on("/api/latest_date", HTTP_GET, handle_latest_date);
     server.on("/api/status",      HTTP_GET, handle_status);
-    server.on("/chart", HTTP_GET, handle_chart);
+    server.on("/chart",           HTTP_GET, handle_chart);
+    server.on("/admin",           HTTP_GET,  handle_admin_get);
+    server.on("/admin",           HTTP_POST, handle_admin_post);
+    server.on("/api/restart",     HTTP_POST, handle_restart);
     server.onNotFound([]() {
         server.send(404, "text/plain", "Not found");
     });

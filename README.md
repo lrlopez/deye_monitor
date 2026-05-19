@@ -14,6 +14,7 @@ Desarrollado para **ESP32-S3** con pantalla táctil de 480×272 px usando **LVGL
 - [Estructura del proyecto](#-estructura-del-proyecto)
 - [Pantallas](#-pantallas)
 - [Servidor web](#-servidor-web)
+- [Panel de administración web](#-panel-de-administración-web)
 - [Bot de Telegram](#-bot-de-telegram)
 - [Almacenamiento](#-almacenamiento)
 - [Instalación y configuración](#-instalación-y-configuración)
@@ -59,6 +60,8 @@ Desarrollado para **ESP32-S3** con pantalla táctil de 480×272 px usando **LVGL
 - Navegación día a día en el navegador
 - API REST con soporte de granularidad 5min/horario/diario
 - Actualización de firmware OTA vía navegador (`/update`)
+- **Panel de administración** en `/admin`: configura inversor, gráfica, Telegram y pantalla desde el navegador
+- Protección por contraseña del panel de administración y de OTA, configurable desde la pantalla táctil
 
 ### Notificaciones Telegram
 - Alertas proactivas: batería baja/recuperada, solar arranca/para, corte de red, fallo logger
@@ -252,6 +255,7 @@ Formulario scrollable con teclado virtual:
 | PANTALLA | Brillo normal/reducido, inactividad, horario nocturno |
 | TELEGRAM | Bot token, chat ID, umbral batería, tipos de alerta |
 | ESTADO RED | IP del ESP32, señal WiFi |
+| ACCESO WEB | Contraseña para el panel de administración web y OTA |
 
 Los cambios de WiFi/logger requieren reinicio. Los de brillo y Telegram se aplican en caliente.
 
@@ -267,7 +271,8 @@ Accesible en `http://<ip-del-esp32>/`
 |---|---|
 | `/` | Dashboard con valores live y donuts SVG animados |
 | `/chart` | Gráfica diaria interactiva con Chart.js, navegable |
-| `/update` | Actualización de firmware OTA |
+| `/update` | Actualización de firmware OTA (protegida por contraseña si está configurada) |
+| `/admin` | Panel de administración: inversor, gráfica, Telegram, pantalla (protegido por contraseña) |
 
 ### API REST
 
@@ -284,6 +289,40 @@ Accesible en `http://<ip-del-esp32>/`
 - La gráfica de `/chart` usa actualizaciones **incrementales**: solo se piden los registros nuevos desde el último timestamp recibido (`from_ts`)
 - Al cargar `/chart`, se consulta `/api/latest_date` para navegar directamente al último día con datos, evitando mostrar una gráfica vacía tras un reinicio
 - Al llegar las 00:00 se cambia automáticamente al nuevo día
+
+---
+
+## 🔐 Panel de administración web
+
+Accesible en `http://<ip-del-esp32>/admin`
+
+Permite configurar todos los parámetros del sistema desde el navegador, sin necesidad de acceder a la pantalla táctil. La WiFi **no es modificable** desde aquí por seguridad: solo se muestra el nombre de la red activa como campo de solo lectura.
+
+### Secciones del panel
+
+| Sección | Parámetros configurables |
+|---|---|
+| **WiFi** | SSID (solo lectura) |
+| **Inversor** | IP del datalogger, número de serie |
+| **Gráfica** | Autoescalado, máximo kW |
+| **Telegram** | Token del bot, chat ID, umbral de batería, tipos de alerta |
+| **Pantalla** | Brillo normal y reducido, tiempo de inactividad, horario nocturno |
+
+El panel incluye un botón **Guardar** que aplica todos los cambios y redirige de vuelta al panel, y un botón **Reiniciar** para aplicar cambios que requieren reinicio (como la IP del datalogger).
+
+### Protección por contraseña
+
+El panel `/admin` y la página `/update` de OTA están protegidos mediante **HTTP Basic Auth** cuando hay una contraseña configurada.
+
+**La contraseña solo puede establecerse desde la pantalla táctil** (sección ACCESO WEB de la pantalla de configuración), nunca desde la web. Esto evita que un atacante que acceda a la red pueda bloquearte el acceso.
+
+Flujo de configuración:
+
+1. En la pantalla táctil, desplázate hasta la sección **ACCESO WEB**
+2. Escribe la contraseña deseada en el campo y pulsa **Guardar**
+3. A partir de ese momento, el navegador solicitará usuario `admin` y la contraseña elegida al acceder a `/admin` o `/update`
+
+> Si no se ha configurado ninguna contraseña, ambas páginas son accesibles sin autenticación (comportamiento predeterminado para facilitar el primer acceso).
 
 ---
 
@@ -367,10 +406,14 @@ La historia horaria completa reside en PSRAM, por lo que **la generación de gr�
 
 ### NVS (20 KB)
 
-| Namespace | Contenido |
-|---|---|
-| `cfg` | WiFi, IP logger, serial, gráfica, brillo, Telegram |
-| `hist_d` | Sesión (epoch del último registro) |
+| Namespace | Clave | Contenido |
+|---|---|---|
+| `cfg` | `ssid`, `pass`, `lip`, `lserial` | WiFi e inversor |
+| `cfg` | `ch_auto`, `ch_kw` | Configuración de la gráfica |
+| `cfg` | `bl_norm`, `bl_red`, `bl_inact`, `bl_isecs`, `bl_night`, `bl_nstart`, `bl_nend` | Brillo y horario nocturno |
+| `cfg` | `tg_token`, `tg_chatid`, `tg_batt`, `tg_solar`, `tg_grid`, `tg_logger` | Telegram |
+| `cfg` | `web_pass` | Contraseña del panel de administración web |
+| `cfg` | `session` | Epoch del último registro (recuperación tras corte) |
 
 ---
 
@@ -488,9 +531,10 @@ En el monitor serie deberías ver:
 ### Desde el navegador
 
 1. Accede a `http://<ip-del-esp32>/update`
-2. Selecciona el fichero `.bin` de la release
-3. Pulsa **Actualizar** — la barra de progreso mostrará el avance
-4. El ESP32 se reiniciará automáticamente al terminar
+2. Si hay contraseña configurada, el navegador pedirá usuario `admin` y la contraseña (ver [Panel de administración web](#-panel-de-administración-web))
+3. Selecciona el fichero `.bin` de la release
+4. Pulsa **Actualizar** — la barra de progreso mostrará el avance
+5. El ESP32 se reiniciará automáticamente al terminar
 
 > **Nota:** El fichero `.bin` para OTA es solo la partición de aplicación (no incluye el filesystem). Se genera en `.pio/build/<entorno>/firmware.bin`.
 
@@ -542,6 +586,7 @@ ci_skip = true   # Este entorno no se compilará en GitHub Actions
 | `GET` | `/api/history` | Histórico (5min / horario / diario) |
 | `GET` | `/api/latest_date` | Último día con datos de 5 min en flash |
 | `GET` | `/api/status` | Estado del almacenamiento y sistema |
+| `POST` | `/api/restart` | Reinicia el ESP32 (usado desde el panel de administración) |
 
 ---
 
