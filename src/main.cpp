@@ -464,10 +464,10 @@ static void solarmanTask(void* /*pv*/) {
             }
 
             // ── Red eléctrica ─────────────────────────────────────────────
-            // Corte: |grid_power| < 100 W durante 3 lecturas (15 s)
+            // Corte: |grid_power| = 0 W durante 3 lecturas (15 s)
             // Solo se evalúa tras haber visto red activa al menos una vez
             if (s_tgcfg.notify_grid) {
-                const bool grid_active = fabsf(local_e.grid_power) > 100.0f;
+                const bool grid_active = fabsf(local_e.grid_power) != 0.0f;
                 if (grid_active) s_had_grid = true;
 
                 if (s_had_grid && !s_grid_outage && !grid_active) {
