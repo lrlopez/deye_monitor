@@ -137,6 +137,24 @@ static void solarmanTask(void* /*pv*/) {
     static uint16_t s_snap_day_bchg = 0, s_snap_day_bdis = 0;
     static bool     s_snap_valid = false;
 
+    // ── Estado de alertas ─────────────────────────────────────────────────
+    static bool     s_solar_active    = false;
+    static uint8_t  s_solar_debounce  = 0;
+
+    static bool     s_batt_low        = false;
+
+    static uint8_t  s_logger_fail_cnt = 0;
+    static bool     s_logger_notified = false;
+
+    static bool     s_grid_outage     = false;
+    static uint8_t  s_grid_debounce   = 0;
+    static bool     s_had_grid        = false;  // al menos 1 lectura con red activa
+
+    // Config Telegram cacheada — se recarga desde NVS cada 60 s
+    static bool           s_tgcfg_loaded  = false;
+    static TelegramConfig s_tgcfg{};
+    static uint32_t       s_tgcfg_last_ms = 0;
+
     static uint8_t  s_soc_start_of_day = 0;
 
     for (;;) {
@@ -181,6 +199,8 @@ static void solarmanTask(void* /*pv*/) {
 
         // ── 1. Datos instantáneos ─────────────────────────────────────────
         if (client.fetchEnergyData(local_e)) {
+            s_logger_fail_cnt = 0;
+            s_logger_notified = false;
             Serial0.printf("[Live] PV:%dW Grid:%dW Bat:%dW(%d%%) Load:%dW\n",
                 (int)local_e.pv_power, (int)local_e.grid_power,
                 (int)local_e.batt_power, (int)local_e.batt_soc,
@@ -189,6 +209,19 @@ static void solarmanTask(void* /*pv*/) {
                 g_energy       = local_e;
                 g_energy_ready = true;
                 xSemaphoreGive(g_mutex);
+            }
+        } else {
+            // 5 fallos consecutivos (~25 s) → notificar una sola vez
+            if (++s_logger_fail_cnt == 5 && !s_logger_notified
+                    && Telegram.isConfigured()) {
+                if (!s_tgcfg_loaded) {
+                    s_tgcfg = Storage.loadTelegramConfig();
+                    s_tgcfg_loaded  = true;
+                    s_tgcfg_last_ms = millis();
+                }
+                if (s_tgcfg.notify_logger)
+                    Telegram.enqueueAlert(AlertType::LOGGER_FAIL);
+                s_logger_notified = true;
             }
         }
 
@@ -383,6 +416,76 @@ static void solarmanTask(void* /*pv*/) {
         }
 
         end_record:;
+
+        // ── Alertas Telegram ──────────────────────────────────────────────
+        if (s_startup_done && local_e.valid && Telegram.isConfigured()) {
+            // Refrescar config de Telegram desde NVS cada 60 s
+            if (!s_tgcfg_loaded || millis() - s_tgcfg_last_ms >= 60000) {
+                s_tgcfg = Storage.loadTelegramConfig();
+                s_tgcfg_loaded  = true;
+                s_tgcfg_last_ms = millis();
+            }
+
+            // ── Producción solar ──────────────────────────────────────────
+            // Umbral de inicio: 50 W / parada: 20 W — debounce 3 lecturas (15 s)
+            if (s_tgcfg.notify_solar) {
+                if (!s_solar_active && local_e.pv_power > 50.0f) {
+                    if (++s_solar_debounce >= 3) {
+                        s_solar_active   = true;
+                        s_solar_debounce = 0;
+                        Telegram.enqueueAlert(AlertType::SOLAR_START,
+                                              (int32_t)local_e.pv_power);
+                    }
+                } else if (s_solar_active && local_e.pv_power < 20.0f) {
+                    if (++s_solar_debounce >= 3) {
+                        s_solar_active   = false;
+                        s_solar_debounce = 0;
+                        Telegram.enqueueAlert(AlertType::SOLAR_STOP);
+                    }
+                } else {
+                    s_solar_debounce = 0;
+                }
+            }
+
+            // ── Batería ───────────────────────────────────────────────────
+            // Alerta cuando SOC < umbral; recuperación cuando SOC ≥ umbral+5
+            {
+                const uint8_t thr = s_tgcfg.batt_threshold;
+                const uint8_t rec = (thr + 5 <= 100) ? thr + 5 : 100;
+                if (!s_batt_low && local_e.batt_soc < thr) {
+                    s_batt_low = true;
+                    Telegram.enqueueAlert(AlertType::BATT_LOW,
+                                          (int32_t)local_e.batt_soc);
+                } else if (s_batt_low && local_e.batt_soc >= rec) {
+                    s_batt_low = false;
+                    Telegram.enqueueAlert(AlertType::BATT_RECOVERED,
+                                          (int32_t)local_e.batt_soc);
+                }
+            }
+
+            // ── Red eléctrica ─────────────────────────────────────────────
+            // Corte: |grid_power| < 100 W durante 3 lecturas (15 s)
+            // Solo se evalúa tras haber visto red activa al menos una vez
+            if (s_tgcfg.notify_grid) {
+                const bool grid_active = fabsf(local_e.grid_power) > 100.0f;
+                if (grid_active) s_had_grid = true;
+
+                if (s_had_grid && !s_grid_outage && !grid_active) {
+                    if (++s_grid_debounce >= 3) {
+                        s_grid_outage   = true;
+                        s_grid_debounce = 0;
+                        Telegram.enqueueAlert(AlertType::GRID_OUTAGE,
+                                              (int32_t)local_e.grid_power);
+                    }
+                } else if (s_grid_outage && grid_active) {
+                    s_grid_outage   = false;
+                    s_grid_debounce = 0;
+                    Telegram.enqueueAlert(AlertType::GRID_RESTORED);
+                } else if (grid_active) {
+                    s_grid_debounce = 0;
+                }
+            }
+        }
 
         vTaskDelay(pdMS_TO_TICKS(POLL_INTERVAL_MS));   // ← dentro del bucle
     }
