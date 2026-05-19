@@ -16,6 +16,11 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 - `solarman.cpp`: `client.connect()` no tenía timeout de conexión TCP — podía bloquear hasta 75 s si el host existía pero el puerto 8899 no respondía. Añadido timeout explícito de 3 s mediante `connect(_ip, _port, 3000)`
 - `web_server.cpp`: la flag `s_ota_authed` no se reiniciaba entre sesiones de subida OTA; si una sesión anterior autenticada quedaba interrumpida, un POST posterior sin credenciales podía reutilizar la flag. Corregido reiniciando `s_ota_authed = false` al cargar la página `/update`
 - `psram_cache.cpp` / `psram_cache.h`: race condition crítica entre `solarmanTask` (escrituras vía `pushRaw`/`pushHourly`/`pushDaily`) y `webserver_task` (lecturas de datos en caché) sin ningún mutex. Implementado mutex recursivo interno en todos los métodos públicos de `PsramCache`; la tarea de carga en background (`_bg_task`) también adquiere el mutex antes de cargar datos
+- `config.h`: credenciales WiFi y datos del datalogger hardcoded en el repositorio (`WIFI_SSID`, `WIFI_PASS`, `LOGGER_IP`, `LOGGER_SERIAL`) sustituidos por valores vacíos/placeholder; los valores reales se configuran desde la pantalla táctil y se persisten en NVS
+- `data_store.cpp`: el límite del índice de días usaba el literal `730` en lugar de la constante `DAY_IDX_MAX`, lo que desincronizaba el tamaño real del buffer con el valor declarado en la cabecera
+- `web_server.cpp`: `String::toInt()` truncaba números de serie del datalogger con 10 dígitos que superan `INT_MAX`; sustituido por `strtoul()` para parsear correctamente todo el rango `uint32_t`
+- `web_server.cpp` / `telegram.cpp`: `parse_date()` aceptaba strings de 8 caracteres sin verificar que fueran dígitos ni que los valores estuvieran en rango, permitiendo que `mktime()` normalizara fechas absurdas; añadidas validación de dígitos y comprobación de rangos (año 2020–2100, mes 1–12, día 1–31)
+- `web_server.cpp`: los campos `wifi_ssid`, `logger_ip`, `tg_token` y `tg_chat_id` se inyectaban sin escapar en el HTML del panel `/admin`, permitiendo XSS almacenado si el NVS contenía caracteres especiales; añadida función `html_escape()` aplicada a todos los puntos de salida
 
 ---
 
