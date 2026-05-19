@@ -141,7 +141,8 @@ static void solarmanTask(void* /*pv*/) {
     static bool     s_solar_active    = false;
     static uint8_t  s_solar_debounce  = 0;
 
-    static bool     s_batt_low        = false;
+    enum class BattState : uint8_t { NORMAL, WARN, CRIT };
+    static BattState s_batt_state = BattState::NORMAL;
 
     static uint8_t  s_logger_fail_cnt = 0;
     static bool     s_logger_notified = false;
@@ -448,18 +449,41 @@ static void solarmanTask(void* /*pv*/) {
             }
 
             // ── Batería ───────────────────────────────────────────────────
-            // Alerta cuando SOC < umbral; recuperación cuando SOC ≥ umbral+5
+            // Dos niveles: aviso (batt_warn) y crítico (batt_threshold)
+            // Recuperación con histéresis +5% sobre el umbral de aviso
             {
-                const uint8_t thr = s_tgcfg.batt_threshold;
-                const uint8_t rec = (thr + 5 <= 100) ? thr + 5 : 100;
-                if (!s_batt_low && local_e.batt_soc < thr) {
-                    s_batt_low = true;
-                    Telegram.enqueueAlert(AlertType::BATT_LOW,
-                                          (int32_t)local_e.batt_soc);
-                } else if (s_batt_low && local_e.batt_soc >= rec) {
-                    s_batt_low = false;
-                    Telegram.enqueueAlert(AlertType::BATT_RECOVERED,
-                                          (int32_t)local_e.batt_soc);
+                const uint8_t warn = s_tgcfg.batt_warn;
+                const uint8_t crit = s_tgcfg.batt_threshold;
+                const uint8_t soc  = (uint8_t)local_e.batt_soc;
+                const uint8_t rec  = (uint8_t)min((int)warn + 5, 100);
+                switch (s_batt_state) {
+                case BattState::NORMAL:
+                    if (crit > 0 && soc < crit) {
+                        s_batt_state = BattState::CRIT;
+                        Telegram.enqueueAlert(AlertType::BATT_CRITICAL, (int32_t)soc);
+                    } else if (warn > 0 && soc < warn) {
+                        s_batt_state = BattState::WARN;
+                        Telegram.enqueueAlert(AlertType::BATT_LOW, (int32_t)soc);
+                    }
+                    break;
+                case BattState::WARN:
+                    if (crit > 0 && soc < crit) {
+                        s_batt_state = BattState::CRIT;
+                        Telegram.enqueueAlert(AlertType::BATT_CRITICAL, (int32_t)soc);
+                    } else if (soc >= rec) {
+                        s_batt_state = BattState::NORMAL;
+                        Telegram.enqueueAlert(AlertType::BATT_RECOVERED, (int32_t)soc);
+                    }
+                    break;
+                case BattState::CRIT:
+                    if (soc >= rec) {
+                        s_batt_state = BattState::NORMAL;
+                        Telegram.enqueueAlert(AlertType::BATT_RECOVERED, (int32_t)soc);
+                    } else if (warn > 0 && soc >= (uint8_t)min((int)crit + 5, 100)) {
+                        s_batt_state = BattState::WARN;
+                        // transición silenciosa de crítico a aviso
+                    }
+                    break;
                 }
             }
 

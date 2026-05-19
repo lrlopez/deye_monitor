@@ -42,7 +42,8 @@ constexpr uint8_t DAILY_HISTORY_SIZE = 90;
 struct TelegramConfig {
     char    token[64];
     char    chat_id[32];
-    uint8_t batt_threshold;   // % — alerta si SOC < este valor
+    uint8_t batt_threshold;   // % — alerta crítica si SOC < este valor (default 20)
+    uint8_t batt_warn;        // % — aviso si SOC < este valor (default 25)
     bool    notify_solar;     // notificar inicio/fin de producción
     bool    notify_grid;      // notificar corte/restauración de red
     bool    notify_logger;    // notificar fallo de comunicación

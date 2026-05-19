@@ -25,7 +25,8 @@ static lv_obj_t* lbl_status;
 static lv_obj_t* kb;
 static lv_obj_t* s_ta_tg_token   = nullptr;
 static lv_obj_t* s_ta_tg_chatid  = nullptr;
-static lv_obj_t* s_slider_tg_thr = nullptr;
+static lv_obj_t* s_slider_tg_warn = nullptr;
+static lv_obj_t* s_slider_tg_thr  = nullptr;
 static lv_obj_t* s_cb_tg_solar   = nullptr;
 static lv_obj_t* s_cb_tg_grid    = nullptr;
 static lv_obj_t* s_cb_tg_logger  = nullptr;
@@ -423,6 +424,7 @@ static void save_btn_cb(lv_event_t* /*e*/) {
             sizeof(tgcfg.token) - 1);
     strncpy(tgcfg.chat_id, lv_textarea_get_text(s_ta_tg_chatid),
             sizeof(tgcfg.chat_id) - 1);
+    tgcfg.batt_warn      = (uint8_t)lv_slider_get_value(s_slider_tg_warn);
     tgcfg.batt_threshold = (uint8_t)lv_slider_get_value(s_slider_tg_thr);
     tgcfg.notify_solar   = lv_obj_has_state(s_cb_tg_solar,  LV_STATE_CHECKED);
     tgcfg.notify_grid    = lv_obj_has_state(s_cb_tg_grid,   LV_STATE_CHECKED);
@@ -500,7 +502,7 @@ void config_screen_init(lv_obj_t* parent) {
     const int SEC_NET_Y    = SEC_CHART_Y + SEC_CHART_H + SY(4);
     const int SEC_NET_H    = SY(62) + CFG_FIELD_H + CFG_SEC_PAD;
     const int SEC_TG_Y     = SEC_NET_Y   + SEC_NET_H   + SY(4);
-    const int SEC_TG_H     = CFG_FIELD_H*2 + SS(16) + CFG_SEC_PAD*2 + SY(50) + SY(20);
+    const int SEC_TG_H     = CFG_FIELD_H*2 + SS(16) + CFG_SEC_PAD*2 + SY(76) + SY(20);
 
 
     // ── Título ────────────────────────────────────────────────────────────
@@ -645,15 +647,47 @@ void config_screen_init(lv_obj_t* parent) {
     lv_obj_add_event_cb(ta_chatid, ta_event_cb, LV_EVENT_FOCUSED,   nullptr);
     lv_obj_add_event_cb(ta_chatid, ta_event_cb, LV_EVENT_DEFOCUSED, nullptr);
 
-    // Umbral batería
+    // Umbral de aviso batería
+    lv_obj_t* CFG_LBL_warn = lv_label_create(sec_tg);
+    lv_obj_set_pos(CFG_LBL_warn, 0, SY(106));
+    lv_obj_set_style_text_font(CFG_LBL_warn, &FONT_SMALL, 0);
+    lv_obj_set_style_text_color(CFG_LBL_warn, C_MUTED, 0);
+    lv_label_set_text(CFG_LBL_warn, "Aviso bat.:");
+
+    lv_obj_t* CFG_LBL_warn_val = lv_label_create(sec_tg);
+    lv_obj_set_pos(CFG_LBL_warn_val, SX(90), SY(106));
+    lv_obj_set_style_text_font(CFG_LBL_warn_val, &FONT_SMALL, 0);
+    lv_obj_set_style_text_color(CFG_LBL_warn_val, C_WHITE, 0);
+    char warnbuf[8];
+    snprintf(warnbuf, sizeof(warnbuf), "%d%%", tgcfg.batt_warn);
+    lv_label_set_text(CFG_LBL_warn_val, warnbuf);
+
+    lv_obj_t* slider_warn = lv_slider_create(sec_tg);
+    lv_obj_set_pos(slider_warn, SX(134), SY(110));
+    lv_obj_set_size(slider_warn, CFG_SECTION_W - SX(150), SY(16));
+    lv_slider_set_range(slider_warn, 5, 95);
+    lv_slider_set_value(slider_warn, tgcfg.batt_warn, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(slider_warn, lv_color_hex(0xF5C518),  LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(slider_warn, lv_color_hex(0x21262D),  LV_PART_MAIN);
+    lv_obj_set_style_bg_color(slider_warn, C_WHITE,                  LV_PART_KNOB);
+    lv_obj_set_style_pad_all(slider_warn, 4,                         LV_PART_KNOB);
+    lv_obj_add_event_cb(slider_warn, [](lv_event_t* e) {
+        lv_obj_t* sl  = (lv_obj_t*)lv_event_get_target(e);
+        lv_obj_t* lbl = (lv_obj_t*)lv_event_get_user_data(e);
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%d%%", (int)lv_slider_get_value(sl));
+        lv_label_set_text(lbl, buf);
+    }, LV_EVENT_VALUE_CHANGED, CFG_LBL_warn_val);
+
+    // Umbral crítico batería
     lv_obj_t* CFG_LBL_thr = lv_label_create(sec_tg);
-    lv_obj_set_pos(CFG_LBL_thr, 0, SY(106));
+    lv_obj_set_pos(CFG_LBL_thr, 0, SY(132));
     lv_obj_set_style_text_font(CFG_LBL_thr, &FONT_SMALL, 0);
     lv_obj_set_style_text_color(CFG_LBL_thr, C_MUTED, 0);
-    lv_label_set_text(CFG_LBL_thr, "Alerta bat.:");
+    lv_label_set_text(CFG_LBL_thr, "Cr\xC3\xADtico:");
 
     lv_obj_t* CFG_LBL_thr_val = lv_label_create(sec_tg);
-    lv_obj_set_pos(CFG_LBL_thr_val, SX(90), SY(106));
+    lv_obj_set_pos(CFG_LBL_thr_val, SX(90), SY(132));
     lv_obj_set_style_text_font(CFG_LBL_thr_val, &FONT_SMALL, 0);
     lv_obj_set_style_text_color(CFG_LBL_thr_val, C_WHITE, 0);
     char thrbuf[8];
@@ -661,14 +695,14 @@ void config_screen_init(lv_obj_t* parent) {
     lv_label_set_text(CFG_LBL_thr_val, thrbuf);
 
     lv_obj_t* slider_thr = lv_slider_create(sec_tg);
-    lv_obj_set_pos(slider_thr, SX(134), SY(110));
+    lv_obj_set_pos(slider_thr, SX(134), SY(136));
     lv_obj_set_size(slider_thr, CFG_SECTION_W - SX(150), SY(16));
     lv_slider_set_range(slider_thr, 5, 50);
     lv_slider_set_value(slider_thr, tgcfg.batt_threshold, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(slider_thr, C_BTN,                  LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(slider_thr, lv_color_hex(0x21262D), LV_PART_MAIN);
-    lv_obj_set_style_bg_color(slider_thr, C_WHITE,                LV_PART_KNOB);
-    lv_obj_set_style_pad_all(slider_thr, 4,                       LV_PART_KNOB);
+    lv_obj_set_style_bg_color(slider_thr, lv_color_hex(0xE74C3C),   LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(slider_thr, lv_color_hex(0x21262D),   LV_PART_MAIN);
+    lv_obj_set_style_bg_color(slider_thr, C_WHITE,                   LV_PART_KNOB);
+    lv_obj_set_style_pad_all(slider_thr, 4,                          LV_PART_KNOB);
     lv_obj_add_event_cb(slider_thr, [](lv_event_t* e) {
         lv_obj_t* sl  = (lv_obj_t*)lv_event_get_target(e);
         lv_obj_t* lbl = (lv_obj_t*)lv_event_get_user_data(e);
@@ -679,21 +713,21 @@ void config_screen_init(lv_obj_t* parent) {
 
     // Checkboxes de alertas
     lv_obj_t* cb_solar = lv_checkbox_create(sec_tg);
-    lv_obj_set_pos(cb_solar, 0, SY(132));
+    lv_obj_set_pos(cb_solar, 0, SY(158));
     lv_checkbox_set_text(cb_solar, "Solar");
     lv_obj_set_style_text_font(cb_solar, &FONT_SMALL, 0);
     lv_obj_set_style_text_color(cb_solar, C_WHITE, 0);
     if (tgcfg.notify_solar) lv_obj_add_state(cb_solar, LV_STATE_CHECKED);
 
     lv_obj_t* cb_grid = lv_checkbox_create(sec_tg);
-    lv_obj_set_pos(cb_grid, SX(90), SY(132));
+    lv_obj_set_pos(cb_grid, SX(90), SY(158));
     lv_checkbox_set_text(cb_grid, "Red");
     lv_obj_set_style_text_font(cb_grid, &FONT_SMALL, 0);
     lv_obj_set_style_text_color(cb_grid, C_WHITE, 0);
     if (tgcfg.notify_grid) lv_obj_add_state(cb_grid, LV_STATE_CHECKED);
 
     lv_obj_t* cb_logger = lv_checkbox_create(sec_tg);
-    lv_obj_set_pos(cb_logger, SX(165), SY(132));
+    lv_obj_set_pos(cb_logger, SX(165), SY(158));
     lv_checkbox_set_text(cb_logger, "Logger");
     lv_obj_set_style_text_font(cb_logger, &FONT_SMALL, 0);
     lv_obj_set_style_text_color(cb_logger, C_WHITE, 0);
@@ -701,7 +735,7 @@ void config_screen_init(lv_obj_t* parent) {
 
     // Botón de prueba
     lv_obj_t* btn_test = lv_btn_create(sec_tg);
-    lv_obj_set_pos(btn_test, CFG_SECTION_W - CFG_SEC_PAD*2 - SX(110), SY(128));
+    lv_obj_set_pos(btn_test, CFG_SECTION_W - CFG_SEC_PAD*2 - SX(110), SY(154));
     lv_obj_set_size(btn_test, SX(110), SY(30));
     lv_obj_set_style_bg_color(btn_test, lv_color_hex(0x2D7D46), 0);
     lv_obj_set_style_radius(btn_test, 6, 0);
@@ -714,10 +748,10 @@ void config_screen_init(lv_obj_t* parent) {
     lv_obj_center(CFG_LBL_test);
 
     // Guardar referencias para save_btn_cb
-    // (añadir como static al principio del fichero)
     s_ta_tg_token   = ta_token;
     s_ta_tg_chatid  = ta_chatid;
-    s_slider_tg_thr = slider_thr;
+    s_slider_tg_warn = slider_warn;
+    s_slider_tg_thr  = slider_thr;
     s_cb_tg_solar   = cb_solar;
     s_cb_tg_grid    = cb_grid;
     s_cb_tg_logger  = cb_logger;

@@ -96,7 +96,13 @@ static void handle_root() {
   footer{text-align:center;color:var(--muted);
          font-size:.7rem;margin:20px 0 28px}
   a{color:var(--accent);text-decoration:none}
-</style></head><body>
+</style>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0d1117">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="/icon.svg">
+</head><body>
 <h1>&#9889; Deye Monitor – )";
     html += WiFi.localIP().toString();
     html += R"(</h1>
@@ -475,7 +481,13 @@ footer a{color:var(--accent);text-decoration:none}
         border-radius:6px;padding:4px 10px;font-size:.7rem;color:var(--muted)}
 #status-dot{display:inline-block;width:7px;height:7px;border-radius:50%;
             background:var(--muted);margin-right:5px;transition:background .3s}
-</style></head><body>)=EOF=");
+</style>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0d1117">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="/icon.svg">
+</head><body>)=EOF=");
 
     // ── HEADER ────────────────────────────────────────────────────────────
     server.sendContent(R"=EOF=(
@@ -1164,7 +1176,10 @@ function fmtH(v){v=+v;return(v<10?'0':'')+v+'h';}
         "<input type='text' name='tg_chatid' value='");
     server.sendContent(html_escape(tgcfg.chat_id));
     server.sendContent("' maxlength='31'></div>");
-    send_range("Alerta bater&iacute;a", "tg_batt", 5, 50,
+    send_range("Aviso bater&iacute;a", "tg_bwarn", 5, 95,
+               tgcfg.batt_warn, "fmtPct",
+               tgcfg.batt_warn, "%");
+    send_range("Alerta cr&iacute;tica", "tg_batt", 5, 50,
                tgcfg.batt_threshold, "fmtPct",
                tgcfg.batt_threshold, "%");
     send_cb("tg_solar", "tgs", tgcfg.notify_solar,
@@ -1253,6 +1268,8 @@ static void handle_admin_post() {
     TelegramConfig tgcfg{};
     server.arg("tg_token") .toCharArray(tgcfg.token,   sizeof(tgcfg.token)   - 1);
     server.arg("tg_chatid").toCharArray(tgcfg.chat_id, sizeof(tgcfg.chat_id) - 1);
+    int tw = server.arg("tg_bwarn").toInt();
+    tgcfg.batt_warn      = (uint8_t)(tw < 5 ? 5 : tw > 95 ? 95 : tw);
     int tb = server.arg("tg_batt").toInt();
     tgcfg.batt_threshold = (uint8_t)(tb < 5 ? 5 : tb > 50 ? 50 : tb);
     tgcfg.notify_solar   = server.hasArg("tg_solar");
@@ -1585,9 +1602,30 @@ void webserver_task(void* /*pv*/) {
     }
 }
 
+// ═════════════════════════════════════════════════════════════════════════
+// PWA: manifest.json e icono SVG
+// ═════════════════════════════════════════════════════════════════════════
+static void handle_manifest() {
+    server.send(200, "application/manifest+json",
+        R"({"name":"Deye Monitor","short_name":"Deye","start_url":"/",)"
+        R"("display":"standalone","theme_color":"#0d1117",)"
+        R"("background_color":"#0d1117",)"
+        R"("icons":[{"src":"/icon.svg","sizes":"any","type":"image/svg+xml"}]})");
+}
+
+static void handle_icon() {
+    server.send(200, "image/svg+xml",
+        R"(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">)"
+        R"(<rect width="96" height="96" rx="18" fill="#0d1117"/>)"
+        R"(<polygon points="54,12 28,52 50,52 42,84 68,44 46,44" fill="#f5c518"/>)"
+        R"(</svg>)");
+}
+
 void webserver_begin() {
-    server.on("/",         HTTP_GET,  handle_root);
-    server.on("/update",   HTTP_GET,  handle_update_get);
+    server.on("/",              HTTP_GET,  handle_root);
+    server.on("/manifest.json", HTTP_GET,  handle_manifest);
+    server.on("/icon.svg",      HTTP_GET,  handle_icon);
+    server.on("/update",        HTTP_GET,  handle_update_get);
     server.on("/api/data", HTTP_GET,  handle_api_data);
     server.on("/update",   HTTP_POST, handle_update_post, handle_upload);
     server.on("/api/history",     HTTP_GET, handle_history);

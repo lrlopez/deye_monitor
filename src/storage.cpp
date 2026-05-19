@@ -98,6 +98,7 @@ void StorageManager::saveTelegramConfig(const TelegramConfig& cfg) {
     p.putString("tg_token",  cfg.token);
     p.putString("tg_chatid", cfg.chat_id);
     p.putUChar("tg_batt",    cfg.batt_threshold);
+    p.putUChar("tg_bwarn",   cfg.batt_warn);
     p.putBool("tg_solar",    cfg.notify_solar);
     p.putBool("tg_grid",     cfg.notify_grid);
     p.putBool("tg_logger",   cfg.notify_logger);
@@ -113,6 +114,7 @@ TelegramConfig StorageManager::loadTelegramConfig() {
     tok.toCharArray(cfg.token,   sizeof(cfg.token));
     cid.toCharArray(cfg.chat_id, sizeof(cfg.chat_id));
     cfg.batt_threshold = p.getUChar("tg_batt",  20);
+    cfg.batt_warn      = p.getUChar("tg_bwarn", 25);
     cfg.notify_solar   = p.getBool("tg_solar",  true);
     cfg.notify_grid    = p.getBool("tg_grid",   true);
     cfg.notify_logger  = p.getBool("tg_logger", true);

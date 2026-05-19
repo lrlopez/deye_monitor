@@ -8,6 +8,7 @@ static float const BATT_CAPACITY = 15000.0f;
 enum class AlertType : uint8_t {
     BATT_LOW = 0,
     BATT_RECOVERED,
+    BATT_CRITICAL,
     SOLAR_START,
     SOLAR_STOP,
     LOGGER_FAIL,
