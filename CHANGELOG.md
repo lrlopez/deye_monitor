@@ -8,6 +8,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Unreleased]
 
+---
+
+## [v2.0.0] — 2026-05-21
+
 ### Añadido
 - **Soporte para Guition JC1060P470 (ESP32-P4, 1024×600 px MIPI DSI):** nuevo entorno `guition_jc1060p470` en `platformio.ini` con ESP32-P4 RISC-V @ 360 MHz, 8 MB PSRAM y pantalla MIPI DSI de 1024×600 px con touch GT911. Fuentes Montserrat adaptadas a la mayor resolución (14/28/32/48 px). El dispositivo se comporta funcionalmente igual que el ESP32-S3
 - **Renderizado sin tearing en ESP32-P4:** doble framebuffer DSI (`num_fbs=2`) con vsync swap atómico en `esp_lcd_panel_draw_bitmap` y modo `LV_DISPLAY_RENDER_MODE_FULL` con buffer completo en PSRAM. Las actualizaciones de UI y los scrolls son tear-free

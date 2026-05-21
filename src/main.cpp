@@ -78,11 +78,13 @@ static SemaphoreHandle_t s_flash_display_mutex;  // definido más abajo, forward
 void my_disp_flush(lv_display_t * disp, const lv_area_t * area, uint8_t * px_map)
 {
 #if defined(BOARD_GUITION_JC1060P470)
-    // Serializar con escrituras flash de Core 0: si NVS/LittleFS deshabilita
-    // interrupciones allí, esp_cache_msync no puede enviar el IPI necesario.
+    // esp_lcd_panel_draw_bitmap usa DMA2D para copiar el frame al back-buffer y
+    // programa el swap en el siguiente vsync → sin tearing. También bloquea hasta
+    // que DMA2D termina, por lo que px_map es libre al salir.
+    // El mutex serializa con las escrituras flash de Core 0.
     if (s_flash_display_mutex) xSemaphoreTake(s_flash_display_mutex, portMAX_DELAY);
     esp_lcd_panel_draw_bitmap(dsipanel->getPanelHandle(),
-                              0, 0, screenWidth, screenHeight, px_map);
+                              area->x1, area->y1, area->x2 + 1, area->y2 + 1, px_map);
     if (s_flash_display_mutex) xSemaphoreGive(s_flash_display_mutex);
 #else
     uint32_t w = (area->x2 - area->x1 + 1);

@@ -87,7 +87,7 @@ Compatible con **ESP32-S3** (pantalla 480×272 px) y **ESP32-P4** (pantalla Guit
 
 | Entorno PlatformIO | Placa | MCU | Pantalla |
 |---|---|---|---|
-| `esp32s3box` | ESP32-S3 (p.ej. Sunton 4827S043) | ESP32-S3 @ 240 MHz, 8 MB PSRAM | 480×272 px RGB, touch GT911 |
+| `sunton_4827s043` | Sunton 4827S043 | ESP32-S3 @ 240 MHz, 8 MB PSRAM | 480×272 px RGB, touch GT911 |
 | `guition_jc1060p470` | Guition JC1060P470 | ESP32-P4 @ 360 MHz, 8 MB PSRAM | 1024×600 px MIPI DSI, touch GT911 |
 
 ### Componentes comunes
