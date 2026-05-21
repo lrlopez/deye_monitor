@@ -452,7 +452,7 @@ El repositorio incluye dos entornos listos para usar. Selecciona el que correspo
 
 **ESP32-S3 (Sunton 4827S043 u otro, 480×272 px):**
 ```bash
-pio run -e esp32s3box --target upload
+pio run -e sunton_4827s043 --target upload
 ```
 
 **Guition JC1060P470 (ESP32-P4, 1024×600 px MIPI DSI):**
@@ -574,6 +574,15 @@ git push origin v1.1.0-beta
 ```
 
 Los tags con guión se marcan automáticamente como pre-release en GitHub.
+
+### Parches de librería para ESP32-P4
+
+El entorno `guition_jc1060p470` requiere dos modificaciones en la `GFX Library for Arduino` que no están en el registro de PlatformIO:
+
+- `num_fbs=2` y `use_dma2d=true` en `Arduino_ESP32DSIPanel.cpp` para doble buffer con vsync
+- Método `getPanelHandle()` en `Arduino_ESP32DSIPanel.h` para acceder al handle IDF desde el flush callback
+
+Los ficheros parcheados están en `patches/` y el script `scripts/patch_gfx_p4.py` los aplica automáticamente antes de compilar (via `extra_scripts = pre:scripts/patch_gfx_p4.py` en `platformio.ini`). Esto funciona tanto en local como en CI sin necesidad de modificar `.pio/libdeps/` (que está en `.gitignore`).
 
 ### Saltar un entorno en CI
 
@@ -767,7 +776,7 @@ Causas y soluciones:
 El proyecto soporta cualquier resolución ≥ 480×270 px mediante defines de compilación:
 
 ```ini
-; ESP32-S3 — 480×272 px (entorno esp32s3box)
+; ESP32-S3 — 480×272 px (entorno sunton_4827s043)
 -DSCREEN_WIDTH=480  -DSCREEN_HEIGHT=272
 -DFONT_SMALL_SIZE=12  -DFONT_SMALL=lv_font_montserrat_12
 -DFONT_NORMAL_SIZE=14 -DFONT_NORMAL=lv_font_montserrat_14

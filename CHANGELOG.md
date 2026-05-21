@@ -10,6 +10,16 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ---
 
+## [v2.0.1] — 2026-05-21
+
+### Corregido
+- **Parpadeo en arranque ESP32-P4 (causa real: tearing, no caché de flash):** `draw16bitRGBBitmap` copiaba el buffer de LVGL directamente sobre el framebuffer activo mientras el controlador MIPI DSI lo leía en paralelo; en el primer arranque con datos reales la diferencia de contenido era máxima y el fotograma corrupto resultaba visible. Reemplazado por `esp_lcd_panel_draw_bitmap` que usa DMA2D para copiar al back-buffer (front-buffer sigue mostrándose intacto) y programa el swap atómico en el siguiente vsync. El mutex `s_flash_display_mutex` se mantiene para serializar el DMA2D con las escrituras flash de Core 0
+
+### Añadido
+- **Mecanismo de parches para la GFX Library en CI:** `patches/Arduino_ESP32DSIPanel.h/.cpp` contiene las modificaciones necesarias para ESP32-P4 (`num_fbs=2`, `use_dma2d=true`, método `getPanelHandle()`). El script `scripts/patch_gfx_p4.py` (referenciado como `extra_scripts = pre:scripts/patch_gfx_p4.py` en el entorno `guition_jc1060p470`) los aplica automáticamente sobre la versión del registro antes de la compilación, tanto en local como en CI
+
+---
+
 ## [v2.0.0] — 2026-05-21
 
 ### Añadido
