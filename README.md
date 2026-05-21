@@ -1,8 +1,8 @@
 # ⚡ Deye Monitor
 
-Monitor de instalación solar fotovoltaica con inversor híbrido **Deye SUN-6K-SG05** en tiempo real, con pantalla táctil, historial de hasta 4 años, servidor web integrado, notificaciones Telegram, acceso por nombre mDNS (`inversor.local`) y actualización OTA.
+Monitor de instalación solar fotovoltaica con inversor híbrido **Deye SUN-6K-SG05** en tiempo real, con pantalla táctil, historial de hasta 2 años, servidor web integrado, notificaciones Telegram, acceso por nombre mDNS (`inversor.local`) y actualización OTA.
 
-Desarrollado para **ESP32-S3** con pantalla táctil de 480×272 px usando **LVGL 9** y **PlatformIO**.
+Compatible con **ESP32-S3** (pantalla 480×272 px) y **ESP32-P4** (pantalla Guition JC1060P470, 1024×600 px). Desarrollado con **LVGL 9** y **PlatformIO**.
 
 ---
 
@@ -40,7 +40,7 @@ Desarrollado para **ESP32-S3** con pantalla táctil de 480×272 px usando **LVGL
 - Registro de medidas cada **5 minutos** alineado a intervalos exactos (XX:00, XX:05…)
 - Agregación horaria pre-calculada para generación instantánea de gráficas
 - Totales diarios con % de autoconsumo y autosuficiencia
-- Historial de hasta **1.461 días (4 años)** en flash LittleFS
+- Historial de hasta **730 días (2 años)** en flash LittleFS
 - Caché en **PSRAM** de toda la historia horaria y diaria para acceso sin latencia
 
 ### Interfaz táctil (LVGL 9)
@@ -83,17 +83,24 @@ Desarrollado para **ESP32-S3** con pantalla táctil de 480×272 px usando **LVGL
 
 ## 🔧 Hardware requerido
 
+### Placas soportadas
+
+| Entorno PlatformIO | Placa | MCU | Pantalla |
+|---|---|---|---|
+| `esp32s3box` | ESP32-S3 (p.ej. Sunton 4827S043) | ESP32-S3 @ 240 MHz, 8 MB PSRAM | 480×272 px RGB, touch GT911 |
+| `guition_jc1060p470` | Guition JC1060P470 | ESP32-P4 @ 360 MHz, 8 MB PSRAM | 1024×600 px MIPI DSI, touch GT911 |
+
+### Componentes comunes
+
 | Componente | Especificación |
 |---|---|
-| Microcontrolador | ESP32-S3 con 8 MB PSRAM y 16 MB Flash |
-| Pantalla | 480×272 px con controlador táctil capacitivo |
 | Inversor | Deye SUN-6K-SG05 (compatible con variantes SG03/SG04) |
 | Datalogger | Stick WiFi LSW3 incluido con el inversor (SolarmanV5) |
-| Red | WiFi 2.4 GHz compartida entre ESP32 y datalogger |
+| Red | WiFi 2.4 GHz compartida entre la placa y el datalogger |
 
 ### Conexiones
 
-El datalogger y el ESP32-S3 solo necesitan estar en la **misma red WiFi**. No se requiere ninguna conexión física adicional entre ellos. El protocolo de comunicación es SolarmanV5 sobre TCP puerto **8899**.
+El datalogger y la placa solo necesitan estar en la **misma red WiFi**. No se requiere ninguna conexión física adicional entre ellos. El protocolo de comunicación es SolarmanV5 sobre TCP puerto **8899**.
 
 ### Identificar datos del datalogger
 
@@ -140,8 +147,8 @@ El datalogger y el ESP32-S3 solo necesitan estar en la **misma red WiFi**. No se
          │                                   │
          │  PsramCache (PSRAM 8MB)           │
          │  ├── Raw cache   (90 días, 405KB) │
-         │  ├── Hourly cache (1461d, 1.1GB)  │
-         │  └── Daily cache (1461d, 47KB)    │
+         │  ├── Hourly cache (730d, 548KB)   │
+         │  └── Daily cache (730d, 23KB)     │
          └───────────────────────────────────┘
 ```
 
@@ -384,18 +391,19 @@ Tres buffers circulares independientes, todos con el mismo número de días:
 
 | Fichero | Registro | Tamaño | Días | Uso |
 |---|---|---|---|---|
-| `/raw.bin` | `Record5Min` | 16 B | 1.461 | Potencias cada 5 min |
-| `/hrly.bin` | `HourlyRecord` | 32 B | 1.461 | Medias horarias pre-calculadas |
-| `/day.bin` | `DailyRecord` | 32 B | 1.461 | Totales diarios |
+| `/raw.bin` | `Record5Min` | 16 B | 730 | Potencias cada 5 min |
+| `/hrly.bin` | `HourlyRecord` | 32 B | 730 | Medias horarias pre-calculadas |
+| `/day.bin` | `DailyRecord` | 32 B | 730 | Totales diarios |
 
-**Capacidad total:** 1.461 días (~4 años con año bisiesto)
+**Capacidad total:** 730 días (~2 años). Los ficheros crecen on-demand; el espacio se reserva progresivamente conforme se escriben datos, no en el primer arranque.
 
 ```
-raw.bin:   1461 × 288 × 16 B = 6,730 KB
-hrly.bin:  1461 ×  24 × 32 B = 1,121 KB
-day.bin:   1461 ×   1 × 32 B =    46 KB
+raw.bin:   730 × 288 × 16 B = 3,363 KB
+hrly.bin:  730 ×  24 × 32 B =   560 KB
+day.bin:   730 ×   1 × 32 B =    23 KB
 ─────────────────────────────────────────
-Total:                          7,897 KB < 8,192 KB (LittleFS) ✓
+Total máx:                     3,946 KB < 8,192 KB (LittleFS) ✓
+Espacio libre mín:             4,246 KB (>50 %)
 ```
 
 ### Caché PSRAM (8 MB)
@@ -403,8 +411,8 @@ Total:                          7,897 KB < 8,192 KB (LittleFS) ✓
 | Caché | Contenido | Tamaño |
 |---|---|---|
 | Raw (90 días) | Registros recientes de 5 min | 405 KB |
-| Hourly (1.461 días) | **Toda** la historia horaria | 1.121 KB |
-| Daily (1.461 días) | **Toda** la historia diaria | 46 KB |
+| Hourly (730 días) | **Toda** la historia horaria | 548 KB |
+| Daily (730 días) | **Toda** la historia diaria | 23 KB |
 | LVGL heap | Objetos de UI | 256 KB |
 | Canvas gráfica | Buffer de píxeles | 184 KB |
 
@@ -438,25 +446,18 @@ git clone https://github.com/lrlopez/deye-monitor.git
 cd deye-monitor
 ```
 
-### 3. Configurar `platformio.ini`
+### 3. Elegir entorno en `platformio.ini`
 
-```ini
-[env:esp32s3_480x270]
-platform    = espressif32 @ ^6.0.0
-board       = esp32-s3-devkitc-1
-framework   = arduino
-board_build.partitions  = partitions.csv
-board_build.filesystem  = littlefs
-board_build.arduino.memory_type = qio_opi   ; OPI PSRAM del ESP32-S3
-lib_deps    =
-    lvgl/lvgl @ ^9.2.0
-    witnessmenow/Universal-Arduino-Telegram-Bot @ ^1.3.0
-    bblanchon/ArduinoJson @ ^7.0.0
-build_flags =
-    -DLV_CONF_INCLUDE_SIMPLE
-    -DBOARD_HAS_PSRAM
-monitor_speed  = 115200
-upload_speed   = 921600
+El repositorio incluye dos entornos listos para usar. Selecciona el que corresponda a tu hardware:
+
+**ESP32-S3 (Sunton 4827S043 u otro, 480×272 px):**
+```bash
+pio run -e esp32s3box --target upload
+```
+
+**Guition JC1060P470 (ESP32-P4, 1024×600 px MIPI DSI):**
+```bash
+pio run -e guition_jc1060p470 --target upload
 ```
 
 ### 4. Configurar `lv_conf.h`
@@ -670,9 +671,9 @@ Estado del almacenamiento y del sistema.
 
 ```json
 {
-  "raw":    {"count": 12456, "capacity": 420768},
-  "hourly": {"count": 1320,  "capacity": 35064},
-  "daily":  {"count": 55,    "capacity": 1461},
+  "raw":    {"count": 12456, "capacity": 210240},
+  "hourly": {"count": 1320,  "capacity": 17520},
+  "daily":  {"count": 55,    "capacity": 730},
   "psram_free_kb": 6163,
   "wifi_rssi": -62,
   "ip": "192.168.1.34"
@@ -766,13 +767,17 @@ Causas y soluciones:
 El proyecto soporta cualquier resolución ≥ 480×270 px mediante defines de compilación:
 
 ```ini
-[env:esp32s3_800x480]
-build_flags =
-    -DSCREEN_WIDTH=800
-    -DSCREEN_HEIGHT=480
-    -DFONT_SMALL_SIZE=16  -DFONT_SMALL=lv_font_montserrat_16
-    -DFONT_NORMAL_SIZE=20 -DFONT_NORMAL=lv_font_montserrat_20
-    -DFONT_LARGE_SIZE=36  -DFONT_LARGE=lv_font_montserrat_36
+; ESP32-S3 — 480×272 px (entorno esp32s3box)
+-DSCREEN_WIDTH=480  -DSCREEN_HEIGHT=272
+-DFONT_SMALL_SIZE=12  -DFONT_SMALL=lv_font_montserrat_12
+-DFONT_NORMAL_SIZE=14 -DFONT_NORMAL=lv_font_montserrat_14
+-DFONT_LARGE_SIZE=28  -DFONT_LARGE=lv_font_montserrat_28
+
+; ESP32-P4 — 1024×600 px (entorno guition_jc1060p470)
+-DSCREEN_WIDTH=1024 -DSCREEN_HEIGHT=600
+-DFONT_SMALL_SIZE=14  -DFONT_SMALL=lv_font_montserrat_14
+-DFONT_NORMAL_SIZE=18 -DFONT_NORMAL=lv_font_montserrat_18
+-DFONT_LARGE_SIZE=36  -DFONT_LARGE=lv_font_montserrat_36
 ```
 
 Toda la geometría de la UI se escala automáticamente mediante las macros `SX()`, `SY()` y `SS()` de `ui_constants.h`.

@@ -8,8 +8,20 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Unreleased]
 
+### Añadido
+- **Soporte para Guition JC1060P470 (ESP32-P4, 1024×600 px MIPI DSI):** nuevo entorno `guition_jc1060p470` en `platformio.ini` con ESP32-P4 RISC-V @ 360 MHz, 8 MB PSRAM y pantalla MIPI DSI de 1024×600 px con touch GT911. Fuentes Montserrat adaptadas a la mayor resolución (14/28/32/48 px). El dispositivo se comporta funcionalmente igual que el ESP32-S3
+- **Renderizado sin tearing en ESP32-P4:** doble framebuffer DSI (`num_fbs=2`) con vsync swap atómico en `esp_lcd_panel_draw_bitmap` y modo `LV_DISPLAY_RENDER_MODE_FULL` con buffer completo en PSRAM. Las actualizaciones de UI y los scrolls son tear-free
+- **Mensaje de progreso durante el formateo de LittleFS:** la splash screen muestra "Formateando flash..." durante el primer arranque sin bloquear el renderizado LVGL (el formateo se ejecuta en una tarea separada en Core 0 mientras Core 1 sigue procesando eventos)
+- **Macro `DBGSERIAL`** en `config.h` que se resuelve a `Serial` en ESP32-P4 y a `Serial0` en ESP32-S3, unificando todos los mensajes de diagnóstico sin condicionales dispersos
+
 ### Corregido
+- **Parpadeo de pantalla en ESP32-P4 durante accesos a flash:** en ESP32-P4 las escrituras a LittleFS/NVS en Core 0 deshabilitan interrupciones, impidiendo que `esp_cache_msync` entregue el IPI necesario a Core 1 durante el flush del display. Añadido mutex `s_flash_display_mutex` que serializa todas las escrituras a flash (`Store.push`, `Cache.pushHourly`, `Cache.pushDaily`, `Storage.saveSessionState`, `Store.getLastHourly`) con el `esp_lcd_panel_draw_bitmap` del flush callback
+- **WiFi crash en ESP32-P4:** llamar a `WiFi.disconnect()` antes de la primera conexión provoca un crash en ESP32-P4. Añadida bandera `s_wifi_ever_connected` para omitir el disconnect en el primer intento de conexión
+- **LittleFS "No more free space" en el primer write real:** la pre-alocación de ficheros con `seek + write(0)` rellenaba de ceros hasta 3 ficheros (raw 6.7 MB + hrly 1.1 MB + day 46 KB = 94 % de los 2046 bloques disponibles), dejando sin margen para los COW de metadatos que necesita `flush()`. Eliminada la pre-alocación; los ficheros crecen on-demand. Bumpeada la versión de meta a 5 para forzar un reset limpio del almacenamiento en dispositivos que tenían los ficheros pre-alocados
 - `web_server.cpp`: el campo `logger_ip` del panel `/admin` aceptaba cualquier cadena sin validar el formato; añadida función `is_valid_ipv4()` que comprueba que el valor sea exactamente 4 octetos decimales en rango 0–255 antes de guardarlo en NVS
+
+### Modificado
+- **Historial reducido de 1.461 a 730 días** (2 años): el tamaño máximo de los ficheros LittleFS pasa de 7,9 MB a 3,8 MB, dejando siempre más del 50 % del espacio libre incluso con el histórico completo. La caché PSRAM horaria pasa de 1.121 KB a 548 KB
 
 ---
 
