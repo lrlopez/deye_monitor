@@ -109,17 +109,18 @@ String TelegramBot::cmdBateria() const {
         e.batt_power < 0 ? "🔋⬆️ Cargando" :
         e.batt_power > 0 ? "🔋⬇️ Descargando" : "🔋 En reposo";
 
+    AppConfig acfg{}; Storage.loadConfig(acfg);
+    float bat_cap = (float)(acfg.bat_cap_w > 0 ? acfg.bat_cap_w : BAT_CAP_W_DEF);
+
     String autonomia = "N/A";
     if (e.batt_power > 50) {
-        // Estimación simple: capacidad batería típica del SG05 = 
-        // SOC restante en Wh / potencia descarga
-        float wh_left = e.batt_soc / 100.0f * BATT_CAPACITY;
+        float wh_left = e.batt_soc / 100.0f * bat_cap;
         float hours = wh_left / e.batt_power;
         char tmp[24];
         snprintf(tmp, sizeof(tmp), "~%.1f h", hours);
         autonomia = tmp;
     } else if (e.batt_power < -50) {
-        float wh_empty = (100 - e.batt_soc) / 100.0f * BATT_CAPACITY;
+        float wh_empty = (100 - e.batt_soc) / 100.0f * bat_cap;
         float hours = wh_empty / (-e.batt_power);
         char tmp[24];
         snprintf(tmp, sizeof(tmp), "~%.1f h para carga completa", hours);

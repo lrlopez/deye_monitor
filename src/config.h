@@ -54,6 +54,11 @@
 #define POLL_INTERVAL_MS  5000
 #define POLL_DAILY_MS     60000UL
 
+// ── Capacidades instalación (configurables desde pantalla y web) ──────────
+#define INV_MAX_W_DEF    6000   // W — potencia pico del inversor
+#define GRID_MAX_W_DEF   6000   // W — potencia máxima de red
+#define BAT_CAP_W_DEF   16000   // Wh — capacidad de la batería
+
 // ── Escala gráfica ────────────────────────────────────────────────────────
 #define CHART_AUTOSCALE_DEF  true
 #define CHART_MAX_KW_DEF     6

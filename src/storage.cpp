@@ -39,6 +39,10 @@ void StorageManager::loadConfig(AppConfig& out) {
     lip.toCharArray(out.logger_ip,       sizeof(out.logger_ip));
     mdns.toCharArray(out.mdns_hostname,  sizeof(out.mdns_hostname));
 
+    out.inv_max_w  = p.getUShort("inv_max_w",  INV_MAX_W_DEF);
+    out.grid_max_w = p.getUShort("grid_max_w", GRID_MAX_W_DEF);
+    out.bat_cap_w  = p.getUShort("bat_cap_w",  BAT_CAP_W_DEF);
+
     p.end();
     DBGSERIAL.printf("[NVS] Config cargada: SSID=%s  IP=%s  Serial=%lu  mDNS=%s\n",
                   out.wifi_ssid, out.logger_ip,
@@ -53,6 +57,9 @@ void StorageManager::saveConfig(const AppConfig& cfg) {
     p.putString(K_LIP,     cfg.logger_ip);
     p.putULong(K_LSERIAL,  cfg.logger_serial);
     p.putString(K_MDNS,    cfg.mdns_hostname);
+    p.putUShort("inv_max_w",  cfg.inv_max_w);
+    p.putUShort("grid_max_w", cfg.grid_max_w);
+    p.putUShort("bat_cap_w",  cfg.bat_cap_w);
     p.end();
     DBGSERIAL.println("[NVS] Config guardada");
 }

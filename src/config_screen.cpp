@@ -47,6 +47,10 @@ static lv_obj_t* s_lbl_bl_nend       = nullptr;
 static lv_obj_t* s_ta_admin_pass     = nullptr;
 static lv_obj_t* s_ta_mdns          = nullptr;
 
+static lv_obj_t* s_ta_inv_max_w  = nullptr;
+static lv_obj_t* s_ta_grid_max_w = nullptr;
+static lv_obj_t* s_ta_bat_cap_w  = nullptr;
+
 // ── Widgets scan WiFi ─────────────────────────────────────────────────────
 static lv_obj_t*  scan_btn;
 static lv_obj_t*  scan_btn_lbl;
@@ -397,6 +401,15 @@ static void save_btn_cb(lv_event_t* /*e*/) {
     strncpy(cfg.wifi_pass, lv_textarea_get_text(ta_pass),          sizeof(cfg.wifi_pass)-1);
     strncpy(cfg.logger_ip, lv_textarea_get_text(ta_logger_ip),     sizeof(cfg.logger_ip)-1);
     cfg.logger_serial = (uint32_t)atol(lv_textarea_get_text(ta_logger_serial));
+    {
+        auto clamp16 = [](const char* s, uint16_t def) -> uint16_t {
+            int v = atoi(s);
+            return (v >= 1 && v <= 65535) ? (uint16_t)v : def;
+        };
+        cfg.inv_max_w  = s_ta_inv_max_w  ? clamp16(lv_textarea_get_text(s_ta_inv_max_w),  INV_MAX_W_DEF)  : old_cfg.inv_max_w;
+        cfg.grid_max_w = s_ta_grid_max_w ? clamp16(lv_textarea_get_text(s_ta_grid_max_w), GRID_MAX_W_DEF) : old_cfg.grid_max_w;
+        cfg.bat_cap_w  = s_ta_bat_cap_w  ? clamp16(lv_textarea_get_text(s_ta_bat_cap_w),  BAT_CAP_W_DEF)  : old_cfg.bat_cap_w;
+    }
     // mDNS hostname: solo [a-z0-9-], sin guiones al inicio/fin, fallback al default
     if (s_ta_mdns) {
         String raw = lv_textarea_get_text(s_ta_mdns);
@@ -496,7 +509,7 @@ void config_screen_init(lv_obj_t* parent) {
     const int SEC_WIFI_Y   = SY(30);
     const int SEC_WIFI_H   = CFG_FIELD_H*2 + CFG_SEC_PAD*2 + SY(20);
     const int SEC_INV_Y    = SEC_WIFI_Y  + SEC_WIFI_H  + SY(4);
-    const int SEC_INV_H    = SEC_WIFI_H;
+    const int SEC_INV_H    = SEC_WIFI_H + SY(44) * 3;
     const int SEC_CHART_Y  = SEC_INV_Y  + SEC_INV_H   + SY(4);
     const int SEC_CHART_H  = CFG_FIELD_H + SS(16) + CFG_SEC_PAD*2 + SY(30);
     const int SEC_NET_Y    = SEC_CHART_Y + SEC_CHART_H + SY(4);
@@ -563,6 +576,36 @@ void config_screen_init(lv_obj_t* parent) {
     lv_textarea_set_text(ta_logger_serial, sbuf);
     lv_obj_add_event_cb(ta_logger_serial, ta_event_cb, LV_EVENT_FOCUSED,   nullptr);
     lv_obj_add_event_cb(ta_logger_serial, ta_event_cb, LV_EVENT_DEFOCUSED, nullptr);
+
+    // ── Inversor: capacidades de la instalación ───────────────────────────
+    const int FW = CFG_FIELD_W + CFG_SCAN_BTN_W + SX(4);
+    make_row_label(sec_inv, SY(106), "Inv. max W");
+    lv_obj_t* ta_inv_max_w = make_field(sec_inv, CFG_LBL_W, SY(106), FW, false, "6000");
+    { char b[8]; snprintf(b, sizeof(b), "%u", cfg.inv_max_w);
+      lv_textarea_set_text(ta_inv_max_w, b); }
+    lv_textarea_set_max_length(ta_inv_max_w, 5);
+    lv_obj_add_event_cb(ta_inv_max_w, ta_event_cb, LV_EVENT_FOCUSED,   nullptr);
+    lv_obj_add_event_cb(ta_inv_max_w, ta_event_cb, LV_EVENT_DEFOCUSED, nullptr);
+
+    make_row_label(sec_inv, SY(150), "Red max W");
+    lv_obj_t* ta_grid_max_w = make_field(sec_inv, CFG_LBL_W, SY(150), FW, false, "6000");
+    { char b[8]; snprintf(b, sizeof(b), "%u", cfg.grid_max_w);
+      lv_textarea_set_text(ta_grid_max_w, b); }
+    lv_textarea_set_max_length(ta_grid_max_w, 5);
+    lv_obj_add_event_cb(ta_grid_max_w, ta_event_cb, LV_EVENT_FOCUSED,   nullptr);
+    lv_obj_add_event_cb(ta_grid_max_w, ta_event_cb, LV_EVENT_DEFOCUSED, nullptr);
+
+    make_row_label(sec_inv, SY(194), "Cap. bat. Wh");
+    lv_obj_t* ta_bat_cap_w = make_field(sec_inv, CFG_LBL_W, SY(194), FW, false, "16000");
+    { char b[8]; snprintf(b, sizeof(b), "%u", cfg.bat_cap_w);
+      lv_textarea_set_text(ta_bat_cap_w, b); }
+    lv_textarea_set_max_length(ta_bat_cap_w, 5);
+    lv_obj_add_event_cb(ta_bat_cap_w, ta_event_cb, LV_EVENT_FOCUSED,   nullptr);
+    lv_obj_add_event_cb(ta_bat_cap_w, ta_event_cb, LV_EVENT_DEFOCUSED, nullptr);
+
+    s_ta_inv_max_w  = ta_inv_max_w;
+    s_ta_grid_max_w = ta_grid_max_w;
+    s_ta_bat_cap_w  = ta_bat_cap_w;
 
     // ── Sección Gráfica ───────────────────────────────────────────────────────
     // h=100: fila checkbox(16+10) + fila label/valor(20) + fila slider(24) + padding

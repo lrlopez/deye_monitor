@@ -1118,8 +1118,8 @@ h1{font-size:1.05rem;color:var(--accent);margin-bottom:14px;text-align:center}
          color:var(--accent);margin-bottom:12px}
 .row{display:flex;align-items:center;gap:8px;margin-bottom:9px}
 .lbl{min-width:140px;font-size:.8rem;color:var(--muted);flex-shrink:0}
-input[type=text]{background:#21262d;border:1px solid var(--border);border-radius:6px;
-                 color:var(--white);padding:6px 10px;font-size:.85rem;flex:1}
+input[type=text],input[type=number]{background:#21262d;border:1px solid var(--border);
+                 border-radius:6px;color:var(--white);padding:6px 10px;font-size:.85rem;flex:1}
 input[type=range]{flex:1;accent-color:var(--accent)}
 output{min-width:52px;font-size:.8rem;color:var(--white);font-family:monospace}
 .cb-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
@@ -1212,7 +1212,18 @@ function fmtH(v){v=+v;return(v<10?'0':'')+v+'h';}
               "<input type='text' name='logger_serial' value='";
         char _b[12]; snprintf(_b, sizeof(_b), "%lu", (unsigned long)cfg.logger_serial);
         _s += _b;
-        _s += "' maxlength='15'></div></div>";
+        _s += "' maxlength='15'></div>";
+        char _n[480];
+        snprintf(_n, sizeof(_n),
+            "<div class='row'><span class='lbl'>Inv. m&aacute;x. W</span>"
+            "<input type='number' name='inv_max_w' min='1' max='65535' value='%u'></div>"
+            "<div class='row'><span class='lbl'>Red m&aacute;x. W</span>"
+            "<input type='number' name='grid_max_w' min='1' max='65535' value='%u'></div>"
+            "<div class='row'><span class='lbl'>Cap. bat. Wh</span>"
+            "<input type='number' name='bat_cap_w' min='1' max='65535' value='%u'></div>"
+            "</div>",
+            (unsigned)cfg.inv_max_w, (unsigned)cfg.grid_max_w, (unsigned)cfg.bat_cap_w);
+        _s += _n;
         server.sendContent(_s);
     }
 
@@ -1317,6 +1328,9 @@ static void handle_admin_post() {
     String lser = server.arg("logger_serial");
     if (!lser.isEmpty())
         cfg.logger_serial = (uint32_t)strtoul(lser.c_str(), nullptr, 10);
+    { int v = server.arg("inv_max_w").toInt();  if (v >= 1 && v <= 65535) cfg.inv_max_w  = (uint16_t)v; }
+    { int v = server.arg("grid_max_w").toInt(); if (v >= 1 && v <= 65535) cfg.grid_max_w = (uint16_t)v; }
+    { int v = server.arg("bat_cap_w").toInt();  if (v >= 1 && v <= 65535) cfg.bat_cap_w  = (uint16_t)v; }
 
     // ── Gráfica ───────────────────────────────────────────────────────────
     ChartConfig ccfg{};

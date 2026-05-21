@@ -2,8 +2,6 @@
 #include <Arduino.h>
 #include <freertos/queue.h>
 
-static float const BATT_CAPACITY = 15000.0f;
-
 // ── Tipos de alerta proactiva (sin cambios respecto a la API anterior) ────
 enum class AlertType : uint8_t {
     BATT_LOW = 0,

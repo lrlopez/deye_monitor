@@ -10,6 +10,9 @@ struct AppConfig {
     char     logger_ip[24];
     uint32_t logger_serial;
     char     mdns_hostname[32];
+    uint16_t inv_max_w;    // W  — potencia pico del inversor (default INV_MAX_W_DEF)
+    uint16_t grid_max_w;   // W  — potencia máxima de red     (default GRID_MAX_W_DEF)
+    uint16_t bat_cap_w;    // Wh — capacidad de la batería    (default BAT_CAP_W_DEF)
 };
 
 // ── Estado de sesión persistido en NVS ───────────────────────────────────
