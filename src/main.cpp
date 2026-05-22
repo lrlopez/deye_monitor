@@ -68,6 +68,7 @@ Arduino_GFX *gfx = new Arduino_RGB_Display(screenWidth, screenHeight, panel);
 
 static lv_draw_buf_t draw_buf;
 static lv_color_t *disp_draw_buf;
+static lv_color_t *disp_draw_buf2;
 static lv_display_t *disp_drv;
 static unsigned long last_ms;
 
@@ -627,7 +628,7 @@ void setup() {
 #if defined(BOARD_GUITION_JC1060P470)
     disp_draw_buf = (lv_color_t *)heap_caps_malloc(screenWidth * screenHeight * sizeof(lv_color_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
 #else
-    disp_draw_buf = (lv_color_t *)heap_caps_malloc(2 * screenWidth * screenHeight / 4, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    disp_draw_buf = (lv_color_t *)heap_caps_malloc(2 * screenWidth * screenHeight, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
 #endif
     if (!disp_draw_buf)
     {
@@ -647,7 +648,14 @@ void setup() {
                            screenWidth * screenHeight * sizeof(lv_color_t),
                            LV_DISPLAY_RENDER_MODE_FULL);
 #else
-    lv_display_set_buffers(disp_drv, disp_draw_buf, NULL, 2 * screenWidth * screenHeight / 4, LV_DISPLAY_RENDER_MODE_PARTIAL);
+    disp_draw_buf2 = (lv_color_t *)heap_caps_malloc(2 * screenWidth * screenHeight, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!disp_draw_buf2)
+    {
+        DBGSERIAL.println("LVGL disp_draw_buf2 allocate failed!");
+        while (true)
+            delay(1);
+    }
+    lv_display_set_buffers(disp_drv, disp_draw_buf, disp_draw_buf2, 2 * screenWidth * screenHeight, LV_DISPLAY_RENDER_MODE_PARTIAL);
 #endif
 
     /* Initialize the (dummy) input device driver */
