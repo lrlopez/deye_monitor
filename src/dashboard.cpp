@@ -310,18 +310,18 @@ void dashboard_update(const EnergyData& d)
         if (v < -(int32_t)s_grid_max_w) v = -(int32_t)s_grid_max_w;
         lv_arc_set_value(arc_grid, v);
 
-        lv_color_t arc_col, txt_col;
+        lv_color_t arc_col, txt_col = C_WHITE;
         const char* status;
         if (d.grid_power > 50) {
-            arc_col = C_GRID_IMP; txt_col = C_GRID_IMP;
+            arc_col = C_GRID_IMP;
             status  = "Importando";
             lv_label_set_text_fmt(lbl_grid_val, "+%d W", (int)d.grid_power);
         } else if (d.grid_power < -50) {
-            arc_col = C_GRID_EXP; txt_col = C_GRID_EXP;
+            arc_col = C_GRID_EXP;
             status  = "Exportando";
             lv_label_set_text_fmt(lbl_grid_val, "%d W", (int)d.grid_power);
         } else {
-            arc_col = C_ARC_BG;  txt_col = C_WHITE;
+            arc_col = C_ARC_BG;
             status  = "Sin intercambio";
             lv_label_set_text_fmt(lbl_grid_val, "%d W", (int)d.grid_power);
         }
