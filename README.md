@@ -54,8 +54,8 @@ Compatible con **ESP32-S3** (pantalla 480×272 px) y **ESP32-P4** (pantalla Guit
 - Pantalla de inicio (splash) con progreso de inicialización
 
 ### Servidor web integrado
-- Dashboard HTML con actualización por AJAX cada 5 segundos (sin recargar la página)
-- Donuts SVG animados de autoconsumo/producción
+- Dashboard HTML con 4 tarjetas de arco SVG que replican el layout de la pantalla táctil (Solar, Red, Batería, Carga), actualizado por AJAX cada 5 segundos sin recargar la página
+- Donuts SVG animados de autoconsumo/producción con totales del día
 - Gráfica interactiva diaria con **Chart.js** y actualización incremental
 - Navegación día a día en el navegador
 - API REST con soporte de granularidad 5min/horario/diario
@@ -723,10 +723,12 @@ Compara los valores con los que muestra la app SolarmanPV.
 Verifica en el monitor serie:
 
 ```
-[API] daily valid=0 pv=0.00 load=0.00
+[API] daily valid=1 pv=0.00 load=0.00
 ```
 
-Si `valid=0`, la cache PSRAM aún no tiene datos del día. Espera al primer ciclo completo de `fetchDailyStats` (cada 60 segundos).
+Si todos los valores son 0 pero `valid=1`, es probable que `/api/data` esté tardando en recibir los primeros datos del inversor. El endpoint usa `g_daily` (actualizado por `fetchDailyStats` cada 60 s) como fuente primaria. Espera hasta 60 segundos tras el arranque.
+
+Si `valid=0`, aún no se ha completado ningún ciclo de polling. Comprueba la conexión al datalogger.
 
 ### Pantalla congelada al abrir teclado
 

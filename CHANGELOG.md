@@ -10,6 +10,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ---
 
+## [v2.0.4] - 2026-05-23
+
+### Modificado
+
+- **Dashboard web rediseñado:** las 4 tarjetas (Solar, Red, Batería, Carga) tienen ahora el mismo layout que la pantalla táctil: arco indicador grande centrado con el valor principal en blanco en el interior y texto secundario debajo. Solar muestra el desglose PV1/PV2 bajo el arco; Red muestra el estado Importando/Exportando/En reposo; Batería conserva el gradiente rojo/amarillo/verde con máscara gris proporcional al SOC; Carga muestra "Consumo actual".
+
+### Corregido
+
+- `web_server.cpp`: `/api/data` devolvía `daily.valid=true` con todos los valores a cero cuando la caché PSRAM tenía un registro recién creado para el día (sin energía acumulada todavía). El endpoint usa ahora `g_daily` (datos vivos de `fetchDailyStats()`) como fuente primaria, con la caché como fallback; el mismo comportamiento que la pantalla táctil.
+
+---
+
 ## [v2.0.3] - 2026-05-23
 
 ### Añadido
