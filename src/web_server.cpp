@@ -66,19 +66,17 @@ body{background:var(--bg);color:var(--wh);font-family:system-ui,sans-serif;
 .dot{display:inline-block;width:7px;height:7px;border-radius:50%;
      background:var(--muted);margin-right:4px;vertical-align:middle;
      transition:background .3s}
-/* Tarjetas 2×2 */
+/* Tarjetas 2×2 — layout vertical */
 .cards{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px}
-@media(max-width:420px){.cards{grid-template-columns:1fr}}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:10px;
-      display:flex;align-items:center;padding:8px 6px;gap:4px;
-      min-width:0;overflow:hidden}
-.ci{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
-.ct{font-size:.6rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
-.cv{font-size:1.35rem;font-weight:700;line-height:1.1;transition:color .4s}
-.cs{font-size:.65rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
-    white-space:nowrap;max-width:100%}
-.aw{flex-shrink:0;width:27vw;height:27vw;max-width:110px;max-height:110px}
+      display:flex;flex-direction:column;align-items:center;
+      padding:8px 8px 10px;gap:4px;min-width:0;overflow:hidden}
+.ct{font-size:.6rem;text-transform:uppercase;letter-spacing:.07em;
+    color:var(--muted);align-self:flex-start}
+.aw{width:calc(50vw - 28px);height:calc(50vw - 28px);max-width:150px;max-height:150px}
 .aw svg{display:block;width:100%;height:100%}
+.csub{font-size:.65rem;color:var(--muted);text-align:center;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%}
 /* Sección diaria */
 hr{border:none;border-top:1px solid var(--bd);margin:0 8px}
 .dw{padding:10px 8px 4px}
@@ -118,102 +116,87 @@ footer a{color:var(--accent);text-decoration:none}
 </div>)=EOF=");
 
     // ── TARJETAS 2×2 ─────────────────────────────────────────────────────
-    // Geometría del arco SVG: r=44, cx=cy=55, viewBox 110×110
-    //   C   = 2π×44  = 276.46   (circunferencia)
-    //   ARC = 270/360 × C = 207.35  (longitud del arco de 270°)
-    //   GAP = C − ARC = 69.11
-    //   transform="rotate(135 55 55)" → el arco empieza a las 7 en punto
+    // Geometría: r=52, cx=cy=60, viewBox 120×120
+    //   C    = 2π×52 = 326.73
+    //   ARC  = 0.75×C = 245.05  (270°)
+    //   GAP  = 81.68
+    //   THIRD = ARC/3 = 81.68   (franjas batería)
+    //   transform="rotate(135 60 60)" → arranca a las 7 en punto
     server.sendContent(R"=EOF=(
 <div class="cards">
 
 <!-- ☀ Solar -->
 <div class="card">
-  <div class="ci">
-    <div class="ct">&#9728; Solar</div>
-    <div class="cv" id="pv-val" style="color:#f5c518">-- W</div>
-    <div class="cs" id="pv-sub">PV1: -- &nbsp;PV2: --</div>
-  </div>
-  <div class="aw"><svg viewBox="0 0 110 110">
-    <circle cx="55" cy="55" r="44" fill="none" stroke="#21262d" stroke-width="10"
-      stroke-dasharray="207.35 69.11" stroke-linecap="butt" transform="rotate(135 55 55)"/>
-    <circle id="a-pv" cx="55" cy="55" r="44" fill="none" stroke="#f5c518" stroke-width="10"
-      stroke-dasharray="0 276.46" stroke-linecap="butt" transform="rotate(135 55 55)"
+  <div class="ct">&#9728; Solar</div>
+  <div class="aw"><svg viewBox="0 0 120 120">
+    <circle cx="60" cy="60" r="52" fill="none" stroke="#21262d" stroke-width="10"
+      stroke-dasharray="245.05 81.68" stroke-linecap="butt" transform="rotate(135 60 60)"/>
+    <circle id="a-pv" cx="60" cy="60" r="52" fill="none" stroke="#f5c518" stroke-width="10"
+      stroke-dasharray="0 326.73" stroke-linecap="butt" transform="rotate(135 60 60)"
       style="transition:stroke-dasharray .5s"/>
-    <text x="55" y="52" text-anchor="middle" fill="#f5c518" font-size="13" font-weight="700"
+    <text x="60" y="55" text-anchor="middle" fill="#eaeaea" font-size="20" font-weight="700"
       font-family="system-ui" id="a-pv-t">--</text>
-    <text x="55" y="66" text-anchor="middle" fill="#6e7681" font-size="9"
+    <text x="60" y="72" text-anchor="middle" fill="#eaeaea" font-size="12"
       font-family="system-ui">W</text>
   </svg></div>
+  <div class="csub" id="pv-sub">PV1: -- &nbsp; PV2: --</div>
 </div>
 
-<!-- ⇄ Red (arco bipolar: azul importar / verde exportar, simétrico desde el centro) -->
+<!-- ⇄ Red (bipolar: azul=importar / verde=exportar) -->
 <div class="card">
-  <div class="ci">
-    <div class="ct">&#8644; Red</div>
-    <div class="cv" id="grid-val">-- W</div>
-    <div class="cs" id="grid-sub">--</div>
-  </div>
-  <div class="aw"><svg viewBox="0 0 110 110">
-    <circle cx="55" cy="55" r="44" fill="none" stroke="#21262d" stroke-width="10"
-      stroke-dasharray="207.35 69.11" stroke-linecap="butt" transform="rotate(135 55 55)"/>
-    <circle id="a-gimp" cx="55" cy="55" r="44" fill="none" stroke="#4a9eff" stroke-width="10"
-      stroke-dasharray="0 276.46" stroke-linecap="butt" transform="rotate(135 55 55)"
+  <div class="ct">&#8644; Red</div>
+  <div class="aw"><svg viewBox="0 0 120 120">
+    <circle cx="60" cy="60" r="52" fill="none" stroke="#21262d" stroke-width="10"
+      stroke-dasharray="245.05 81.68" stroke-linecap="butt" transform="rotate(135 60 60)"/>
+    <circle id="a-gimp" cx="60" cy="60" r="52" fill="none" stroke="#4a9eff" stroke-width="10"
+      stroke-dasharray="0 326.73" stroke-linecap="butt" transform="rotate(135 60 60)"
       style="transition:stroke-dasharray .5s,stroke-dashoffset .5s"/>
-    <circle id="a-gexp" cx="55" cy="55" r="44" fill="none" stroke="#2ecc71" stroke-width="10"
-      stroke-dasharray="0 276.46" stroke-linecap="butt" transform="rotate(135 55 55)"
+    <circle id="a-gexp" cx="60" cy="60" r="52" fill="none" stroke="#2ecc71" stroke-width="10"
+      stroke-dasharray="0 326.73" stroke-linecap="butt" transform="rotate(135 60 60)"
       style="transition:stroke-dasharray .5s,stroke-dashoffset .5s"/>
-    <text x="55" y="52" text-anchor="middle" fill="#eaeaea" font-size="12" font-weight="700"
+    <text x="60" y="55" text-anchor="middle" fill="#eaeaea" font-size="20" font-weight="700"
       font-family="system-ui" id="a-gv-t">--</text>
-    <text x="55" y="66" text-anchor="middle" fill="#6e7681" font-size="9"
-      font-family="system-ui" id="a-gv-u">W</text>
+    <text x="60" y="72" text-anchor="middle" fill="#eaeaea" font-size="12"
+      font-family="system-ui" id="a-gu-t">W</text>
   </svg></div>
+  <div class="csub" id="grid-sub">--</div>
 </div>
 
-<!-- 🔋 Batería (gradiente rojo/amarillo/verde con máscara gris según SOC) -->
+<!-- 🔋 Batería (gradiente rojo/amarillo/verde + máscara gris) -->
 <div class="card">
-  <div class="ci">
-    <div class="ct">&#128267; Bater&iacute;a</div>
-    <div class="cv" id="batt-soc">-- %</div>
-    <div class="cs" id="batt-sub">--</div>
-  </div>
-  <div class="aw"><svg viewBox="0 0 110 110">
-    <!-- Base de gradiente: rojo primer tercio, amarillo segundo, verde tercero -->
-    <circle cx="55" cy="55" r="44" fill="none" stroke="#e74c3c" stroke-width="10"
-      stroke-dasharray="69.12 207.34" stroke-linecap="butt" transform="rotate(135 55 55)"/>
-    <circle cx="55" cy="55" r="44" fill="none" stroke="#f5c518" stroke-width="10"
-      stroke-dasharray="69.12 207.34" stroke-linecap="butt" transform="rotate(135 55 55)"
-      stroke-dashoffset="-69.12"/>
-    <circle cx="55" cy="55" r="44" fill="none" stroke="#2ecc71" stroke-width="10"
-      stroke-dasharray="69.12 207.34" stroke-linecap="butt" transform="rotate(135 55 55)"
-      stroke-dashoffset="-138.24"/>
-    <!-- Máscara gris: cubre la parte no cargada, desplazada por JS según SOC -->
-    <circle id="a-bm" cx="55" cy="55" r="44" fill="none" stroke="#21262d" stroke-width="11"
-      stroke-dasharray="207.35 69.11" stroke-linecap="butt" transform="rotate(135 55 55)"/>
-    <text x="55" y="52" text-anchor="middle" fill="#eaeaea" font-size="13" font-weight="700"
-      font-family="system-ui" id="a-soc-t">--%</text>
-    <text x="55" y="66" text-anchor="middle" fill="#6e7681" font-size="9"
-      font-family="system-ui">SOC</text>
+  <div class="ct">&#128267; Bater&iacute;a</div>
+  <div class="aw"><svg viewBox="0 0 120 120">
+    <circle cx="60" cy="60" r="52" fill="none" stroke="#e74c3c" stroke-width="10"
+      stroke-dasharray="81.68 245.05" stroke-linecap="butt" transform="rotate(135 60 60)"/>
+    <circle cx="60" cy="60" r="52" fill="none" stroke="#f5c518" stroke-width="10"
+      stroke-dasharray="81.68 245.05" stroke-linecap="butt" transform="rotate(135 60 60)"
+      stroke-dashoffset="-81.68"/>
+    <circle cx="60" cy="60" r="52" fill="none" stroke="#2ecc71" stroke-width="10"
+      stroke-dasharray="81.68 245.05" stroke-linecap="butt" transform="rotate(135 60 60)"
+      stroke-dashoffset="-163.36"/>
+    <circle id="a-bm" cx="60" cy="60" r="52" fill="none" stroke="#21262d" stroke-width="11"
+      stroke-dasharray="245.05 81.68" stroke-linecap="butt" transform="rotate(135 60 60)"/>
+    <text x="60" y="60" text-anchor="middle" dominant-baseline="middle" fill="#eaeaea"
+      font-size="24" font-weight="700" font-family="system-ui" id="a-soc-t">--%</text>
   </svg></div>
+  <div class="csub" id="batt-sub">--</div>
 </div>
 
 <!-- 🏠 Carga -->
 <div class="card">
-  <div class="ci">
-    <div class="ct">&#127968; Carga</div>
-    <div class="cv" id="load-val" style="color:#bb6bd9">-- W</div>
-    <div class="cs">Consumo actual</div>
-  </div>
-  <div class="aw"><svg viewBox="0 0 110 110">
-    <circle cx="55" cy="55" r="44" fill="none" stroke="#21262d" stroke-width="10"
-      stroke-dasharray="207.35 69.11" stroke-linecap="butt" transform="rotate(135 55 55)"/>
-    <circle id="a-ld" cx="55" cy="55" r="44" fill="none" stroke="#bb6bd9" stroke-width="10"
-      stroke-dasharray="0 276.46" stroke-linecap="butt" transform="rotate(135 55 55)"
+  <div class="ct">&#127968; Carga</div>
+  <div class="aw"><svg viewBox="0 0 120 120">
+    <circle cx="60" cy="60" r="52" fill="none" stroke="#21262d" stroke-width="10"
+      stroke-dasharray="245.05 81.68" stroke-linecap="butt" transform="rotate(135 60 60)"/>
+    <circle id="a-ld" cx="60" cy="60" r="52" fill="none" stroke="#bb6bd9" stroke-width="10"
+      stroke-dasharray="0 326.73" stroke-linecap="butt" transform="rotate(135 60 60)"
       style="transition:stroke-dasharray .5s"/>
-    <text x="55" y="52" text-anchor="middle" fill="#bb6bd9" font-size="13" font-weight="700"
+    <text x="60" y="55" text-anchor="middle" fill="#eaeaea" font-size="20" font-weight="700"
       font-family="system-ui" id="a-ld-t">--</text>
-    <text x="55" y="66" text-anchor="middle" fill="#6e7681" font-size="9"
+    <text x="60" y="72" text-anchor="middle" fill="#eaeaea" font-size="12"
       font-family="system-ui">W</text>
   </svg></div>
+  <div class="csub">Consumo actual</div>
 </div>
 
 </div>)=EOF=");
@@ -314,23 +297,20 @@ footer a{color:var(--accent);text-decoration:none}
     {
         char buf[96];
         snprintf(buf, sizeof(buf),
-                 "\n<script>const IM=%u,GM=%u,C=276.46,ARC=207.35,HALF=103.67;\n",
+                 "\n<script>const IM=%u,GM=%u,C=326.73,ARC=245.05,HALF=122.52;\n",
                  (unsigned)cfg.inv_max_w, (unsigned)cfg.grid_max_w);
         server.sendContent(buf);
     }
     server.sendContent(R"=EOF=(
-const CD=2*Math.PI*42; // circunferencia donut r=42
+const CD=2*Math.PI*42;
 
 function ip(id){return document.getElementById(id);}
 
-// Arco simple (0-1) — Solar y Carga
 function setArc(id,f){
   const l=Math.max(0,Math.min(ARC,f*ARC));
   ip(id).setAttribute('stroke-dasharray',l.toFixed(2)+' '+(C-l).toFixed(2));
 }
 
-// Batería: la máscara gris cubre desde el nivel de carga hasta el final del arco
-// dashoffset negativo desplaza el inicio de la máscara hasta la posición "filled"
 function setBatt(soc){
   const filled=(soc/100)*ARC;
   const rest=ARC-filled;
@@ -339,8 +319,6 @@ function setBatt(soc){
   bm.setAttribute('stroke-dashoffset',(-filled).toFixed(2));
 }
 
-// Red bipolar: import llena desde el centro hacia la derecha (azul),
-// export llena desde el centro hacia la izquierda (verde), ambos simétricos
 function setGrid(gw){
   const imp=ip('a-gimp'), exp=ip('a-gexp');
   const zero='0 '+C.toFixed(2);
@@ -360,7 +338,6 @@ function setGrid(gw){
   }
 }
 
-// Donut de energía diaria
 function setDonut(ids,vals,total){
   let off=0;
   ids.forEach((id,i)=>{
@@ -382,35 +359,28 @@ async function refresh(){
     const d=await res.json();
     const l=d.live, day=d.daily;
 
-    // ── Solar ─────────────────────────────────────────────────────────────
-    ip('pv-val').textContent=l.pv_w+' W';
-    ip('pv-sub').innerHTML='PV1: '+l.pv1_w+' W &nbsp;PV2: '+l.pv2_w+' W';
+    // Solar
     ip('a-pv-t').textContent=l.pv_w;
+    ip('pv-sub').innerHTML='PV1: '+l.pv1_w+' W &nbsp; PV2: '+l.pv2_w+' W';
     setArc('a-pv',l.pv_w/IM);
 
-    // ── Red ───────────────────────────────────────────────────────────────
+    // Red
     const gw=l.grid_w;
     const gcol=gw>0?'#4a9eff':gw<0?'#2ecc71':'#6e7681';
     const gtxt=gw>0?'Importando':gw<0?'Exportando':'En reposo';
-    ip('grid-val').textContent=(gw>0?'+':'')+gw+' W';
-    ip('grid-val').style.color=gcol;
+    const gvt=ip('a-gv-t'), gut=ip('a-gu-t');
+    gvt.textContent=(gw>0?'+':'')+gw;
     ip('grid-sub').textContent=gtxt;
-    ip('a-gv-t').textContent=Math.abs(gw);
-    ip('a-gv-t').setAttribute('fill',gcol);
     setGrid(gw);
 
-    // ── Batería ───────────────────────────────────────────────────────────
+    // Batería
     const soc=l.batt_soc, bw=l.batt_w;
     const scol=soc<20?'#e74c3c':soc<50?'#f5c518':'#2ecc71';
-    ip('batt-soc').textContent=soc+'%';
-    ip('batt-soc').style.color=scol;
-    ip('batt-sub').textContent=(bw<0?'Cargando ':bw>0?'Descargando ':'')+
-                                Math.abs(bw)+' W';
     ip('a-soc-t').textContent=soc+'%';
+    ip('batt-sub').textContent=Math.abs(bw)+' W \xb7 '+(bw<0?'Cargando':bw>0?'Descargando':'En reposo');
     setBatt(soc);
 
-    // ── Carga ─────────────────────────────────────────────────────────────
-    ip('load-val').textContent=l.load_w+' W';
+    // Carga
     ip('a-ld-t').textContent=l.load_w;
     setArc('a-ld',l.load_w/IM);
 
@@ -1499,7 +1469,9 @@ static void handle_api_data() {
         xSemaphoreGive(s_mutex);
     }
 
-    // ── Daily: leer desde cache PSRAM (fuente primaria) ───────────────────
+    // ── Daily: fuente primaria = fetchDailyStats() vía g_daily ──────────────
+    // El caché solo tiene los totales grabados al cierre de cada hora,
+    // por lo que al inicio del día está a cero aunque el inversor ya acumule.
     DailyStats d{};
     time_t now; time(&now);
     struct tm tm_now; localtime_r(&now, &tm_now);
@@ -1507,14 +1479,15 @@ static void handle_api_data() {
     tm_now.tm_sec  = 0; tm_now.tm_isdst = -1;
     uint32_t today_ep = (uint32_t)mktime(&tm_now);
 
-    DailyRecord dr{};
-    if (Cache.getDaily(today_ep, dr)) {
-        d = daily_record_to_stats(dr);
-    } else if (s_daily && s_mutex &&
-               xSemaphoreTake(s_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        // Fallback al puntero compartido si la cache aún no tiene datos
+    if (s_daily && s_mutex &&
+        xSemaphoreTake(s_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         d = *s_daily;
         xSemaphoreGive(s_mutex);
+    }
+    // Fallback a caché si todavía no hay datos vivos
+    if (!d.valid) {
+        DailyRecord dr{};
+        if (Cache.getDaily(today_ep, dr)) d = daily_record_to_stats(dr);
     }
 
     char json[512];
