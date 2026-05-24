@@ -85,8 +85,9 @@ private:
     CachedHrlyDay* _hrly_days = nullptr;
 
     // Daily (array plano ordenado cronológicamente)
-    DailyRecord*   _day_buf   = nullptr;
-    uint32_t       _day_count = 0;
+    DailyRecord*   _day_buf              = nullptr;
+    uint32_t       _day_count            = 0;
+    uint32_t       _oldest_daily_epoch   = 0;   // caché de getOldestDailyEpoch()
 
     uint8_t* _has_data_bitmap = nullptr;   // Bytes en PSRAM, 1 bit por día
 

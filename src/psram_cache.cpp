@@ -109,6 +109,11 @@ void PsramCache::_bg_task(void* pv) {
 // ═══════════════════════════════════════════════════════════════════════════
 void PsramCache::_day_load_all() {
     _day_count = Store.readAllDaily(_day_buf, CACHE_DAY_MAX);
+    _oldest_daily_epoch = 0;
+    for (uint32_t i = 0; i < _day_count; i++)
+        if ((_day_buf[i].flags & 0x01) &&
+            (_oldest_daily_epoch == 0 || _day_buf[i].day_epoch < _oldest_daily_epoch))
+            _oldest_daily_epoch = _day_buf[i].day_epoch;
     DBGSERIAL.printf("[Cache] Daily cargado: %lu registros\n",
                   (unsigned long)_day_count);
     constexpr size_t BITMAP_BYTES = (BITMAP_DAYS + 7) / 8;
@@ -150,6 +155,8 @@ void PsramCache::pushDaily(const DailyRecord& r) {
         _day_buf[_day_count-1] = r;
     }
     _bitmap_set(r.day_epoch, r.flags & 0x01);
+    if ((r.flags & 0x01) && (_oldest_daily_epoch == 0 || r.day_epoch < _oldest_daily_epoch))
+        _oldest_daily_epoch = r.day_epoch;
     xSemaphoreGiveRecursive(_mutex);
 }
 
@@ -362,16 +369,7 @@ void PsramCache::reinitAfterNtp() {
 }
 
 uint32_t PsramCache::getOldestDailyEpoch() const {
-    xSemaphoreTakeRecursive(_mutex, portMAX_DELAY);
-    if (_day_count == 0) { xSemaphoreGiveRecursive(_mutex); return 0; }
-    uint32_t oldest = UINT32_MAX;
-    for (uint32_t i = 0; i < _day_count; i++) {
-        if ((_day_buf[i].flags & 0x01) &&
-            _day_buf[i].day_epoch < oldest)
-            oldest = _day_buf[i].day_epoch;
-    }
-    xSemaphoreGiveRecursive(_mutex);
-    return (oldest == UINT32_MAX) ? 0 : oldest;
+    return _oldest_daily_epoch;
 }
 
 void PsramCache::_bitmap_build() {
