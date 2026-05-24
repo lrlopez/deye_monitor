@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <esp_task_wdt.h>
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <lvgl.h>
@@ -690,6 +691,7 @@ void setup() {
         }, "lfs_fmt", 4096, nullptr, 1, nullptr, 0);
         while (!s_fmt_done) {
             lv_timer_handler();
+            esp_task_wdt_reset();
             delay(10);
         }
     }
