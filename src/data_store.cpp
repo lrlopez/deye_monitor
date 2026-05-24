@@ -202,6 +202,7 @@ void DataStore::_day_idx_load() {
 }
 
 void DataStore::_day_idx_insert(uint32_t dep, uint32_t phys_start) {
+    if (_day_idx_find(dep) >= 0) return;
     if (_day_idx_count >= DAY_IDX_MAX) {
         memmove(_day_idx, _day_idx + 1,
                 (_day_idx_count - 1) * sizeof(DayIdx));
