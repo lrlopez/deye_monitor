@@ -159,7 +159,7 @@ private:
 
     // Meta en RAM, guardada solo periódicamente
     uint32_t _pushes_since_meta_save = 0;
-    static constexpr uint32_t META_SAVE_INTERVAL = 1;
+    static constexpr uint32_t META_SAVE_INTERVAL = 12;
 
     static const char* META_FILE;
     static const uint32_t MAGIC   = 0x5A5ADEA2;

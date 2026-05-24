@@ -9,6 +9,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 ### Corregido
 
 - **Brillo nocturno:** El horario nocturno de reducción de brillo ya no se desactiva cuando la opción de reducción por inactividad también está habilitada; ambas opciones funcionan ahora de forma independiente y se aplican correctamente.
+- **Menor desgaste de la memoria flash:** El dispositivo guardaba los metadatos del historial en flash en cada registro (cada 5 minutos); ahora los guarda una vez por hora, reduciendo significativamente el número de escrituras y alargando la vida útil de la memoria interna.
 
 ---
 
