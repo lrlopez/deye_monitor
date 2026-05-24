@@ -262,18 +262,12 @@ void PsramCache::_raw_load(uint32_t dep) {
     if (n > 0) _raw_days[slot].last = dst[n-1];
 }
 
+// Requiere que el llamador mantenga Cache.lock() durante toda la vida del puntero.
 const Record5Min* PsramCache::getRawDay(uint32_t dep, uint32_t& cnt) {
-    xSemaphoreTakeRecursive(_mutex, portMAX_DELAY);
     int slot = _raw_slot_for(dep);
     if (slot < 0 || !_raw_days[slot].loaded) { _raw_load(dep); slot = _raw_slot_for(dep); }
-    if (slot < 0 || !_raw_days[slot].valid) {
-        cnt = 0;
-        xSemaphoreGiveRecursive(_mutex);
-        return nullptr;
-    }
+    if (slot < 0 || !_raw_days[slot].valid) { cnt = 0; return nullptr; }
     cnt = _raw_days[slot].count;
-    // El puntero devuelto es válido mientras el llamador mantenga Cache.lock()
-    xSemaphoreGiveRecursive(_mutex);
     return _raw_buf + slot * RECS_PER_DAY;
 }
 

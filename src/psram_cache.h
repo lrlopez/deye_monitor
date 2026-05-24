@@ -38,6 +38,7 @@ public:
     bool begin();
 
     // ── Raw ───────────────────────────────────────────────────────────────
+    // Requiere Cache.lock() activo durante el uso del puntero devuelto.
     const Record5Min* getRawDay(uint32_t dep, uint32_t& count_out);
     bool getLastRaw(uint32_t dep, Record5Min& out);
     void pushRaw(const Record5Min& r);

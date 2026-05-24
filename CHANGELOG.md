@@ -9,6 +9,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 ### Corregido
 
 - **Estabilidad interna del almacenamiento:** Corregida una inconsistencia en la inicialización del índice de días en memoria que podría haber causado un fallo al inicio si se hubiera ampliado la capacidad de historial.
+- **Protección de concurrencia en la caché:** Eliminada una ventana de tiempo en la lectura del historial de 5 minutos donde un escritor concurrente podría haber corrompido los datos en uso.
 
 ---
 
