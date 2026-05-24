@@ -2,6 +2,7 @@
 #include <time.h>
 
 const char* DataStore::META_FILE = "/meta2.bin";
+const char* DataStore::IDX_FILE  = "/day_idx.bin";
 
 DataStore& DataStore::instance() {
     static DataStore d; return d;
@@ -90,6 +91,7 @@ bool DataStore::begin() {
         LittleFS.remove(_hrly.path);
         LittleFS.remove(_day.path);
         LittleFS.remove(META_FILE);
+        LittleFS.remove(IDX_FILE);
         // head y count ya son 0 por la inicialización de CircBuf
     }
 
@@ -129,8 +131,17 @@ bool DataStore::begin() {
                   (unsigned long)_day.count,
                   (unsigned)(LittleFS.totalBytes() - LittleFS.usedBytes()) / 1024);
 
-    // Construir índice de días desde el buffer raw
-    if (_raw.count > 0) _day_idx_load();
+    // Cargar o reconstruir índice de días
+    if (_raw.count > 0) {
+        if (_day_idx_load_file()) {
+            DBGSERIAL.printf("[Store] Índice cargado: %lu entradas\n",
+                            (unsigned long)_day_idx_count);
+        } else {
+            DBGSERIAL.println("[Store] Índice no cacheado — reconstruyendo desde raw...");
+            _day_idx_load();
+            _day_idx_save();
+        }
+    }
 
     return true;
 }
@@ -149,7 +160,42 @@ bool DataStore::readRaw(uint32_t phys, Record5Min& r) {
            r.timestamp > 1577836800UL;  // >= 2020-01-01; filtra arranques pre-NTP (~1970)
 }
 
-// ── Índice de días ────────────────────────────────────────────────────────
+// ── Índice de días: persistencia ─────────────────────────────────────────
+bool DataStore::_day_idx_save() {
+    File f = LittleFS.open(IDX_FILE, "w");
+    if (!f) return false;
+    uint32_t hdr[2] = { IDX_MAGIC, _day_idx_count };
+    bool ok = (f.write((const uint8_t*)hdr, sizeof(hdr)) == sizeof(hdr));
+    if (ok && _day_idx_count > 0)
+        ok = (f.write((const uint8_t*)_day_idx,
+                      _day_idx_count * sizeof(DayIdx))
+              == _day_idx_count * sizeof(DayIdx));
+    f.close();
+    return ok;
+}
+
+bool DataStore::_day_idx_load_file() {
+    File f = LittleFS.open(IDX_FILE, "r");
+    if (!f) return false;
+    uint32_t hdr[2] = {};
+    bool ok = (f.read((uint8_t*)hdr, sizeof(hdr)) == sizeof(hdr));
+    uint32_t count = hdr[1];
+    if (!ok || hdr[0] != IDX_MAGIC || count > DAY_IDX_MAX || count > _raw.count) {
+        f.close(); return false;
+    }
+    if (count > 0) {
+        size_t expected = count * sizeof(DayIdx);
+        ok = (f.read((uint8_t*)_day_idx, expected) == expected);
+        for (uint32_t i = 0; i < count && ok; i++)
+            if (_day_idx[i].phys_start >= _raw.capacity) ok = false;
+    }
+    f.close();
+    if (!ok) { _day_idx_count = 0; return false; }
+    _day_idx_count = count;
+    return true;
+}
+
+// ── Índice de días: reconstrucción desde raw ──────────────────────────────
 void DataStore::_day_idx_load() {
     // Escanear el buffer raw para encontrar el inicio de cada día
     // Solo se ejecuta una vez en begin()
@@ -215,6 +261,7 @@ void DataStore::_day_idx_insert(uint32_t dep, uint32_t phys_start) {
         _day_idx_count--;
     }
     _day_idx[_day_idx_count++] = {dep, phys_start};
+    _day_idx_save();   // ocurre una vez al día — coste amortizado es despreciable
 }
 
 int DataStore::_day_idx_find(uint32_t dep) const {

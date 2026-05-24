@@ -167,8 +167,10 @@ private:
     static constexpr uint32_t META_SAVE_INTERVAL = 12;
 
     static const char* META_FILE;
-    static const uint32_t MAGIC   = 0x5A5ADEA2;
-    static const uint8_t  VERSION = 5;           // versión 5: sin pre-alocación de ficheros
+    static const char* IDX_FILE;
+    static const uint32_t MAGIC     = 0x5A5ADEA2;
+    static const uint32_t IDX_MAGIC = 0x49445831;  // 'IDX1'
+    static const uint8_t  VERSION   = 5;           // versión 5: sin pre-alocación de ficheros
 
     DailyRecord currentDaily;
 
@@ -184,6 +186,8 @@ private:
     void   _day_idx_insert(uint32_t day_epoch, uint32_t phys_start);
     int    _day_idx_find  (uint32_t day_epoch) const;
     void   _day_idx_load  ();
+    bool   _day_idx_save  ();
+    bool   _day_idx_load_file();
     uint32_t physIdx(const CircBuf& cb, uint32_t logical) const;
     uint32_t lowerBoundHrly(uint32_t ts);
 };
