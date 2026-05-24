@@ -1088,6 +1088,7 @@ static void handle_update_post() {
     if (Update.hasError()) return;
     server.sendHeader("Connection", "close");
     server.send(200, "text/plain", "OK");
+    Store.flush();
     delay(500);
     ESP.restart();
 }
@@ -1490,6 +1491,7 @@ static void handle_restart() {
         "<p style='color:#6e7681;margin-top:10px'>"
         "La p&aacute;gina se redirigir&aacute; al dashboard en 6 segundos.</p>"
         "</body></html>");
+    Store.flush();
     delay(500);
     ESP.restart();
 }

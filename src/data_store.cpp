@@ -40,6 +40,12 @@ bool DataStore::saveMeta() {
     return ok;
 }
 
+void DataStore::flush() {
+    if (xSemaphoreTake(_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) return;
+    saveMeta();
+    xSemaphoreGive(_mutex);
+}
+
 // ── Lectura/escritura genérica ────────────────────────────────────────────
 uint32_t DataStore::physIdx(const CircBuf& cb, uint32_t logical) const {
     return (cb.head + logical) % cb.capacity;

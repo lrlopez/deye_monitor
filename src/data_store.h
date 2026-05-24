@@ -97,6 +97,9 @@ public:
 
     bool begin();
 
+    // Forzar guardado de metadatos antes de reiniciar
+    void flush();
+
     // ── Raw 5 min ─────────────────────────────────────────────────────────
     bool     push(const Record5Min& r);
     uint32_t readDay(uint32_t day_epoch, Record5Min* out, uint32_t max);
