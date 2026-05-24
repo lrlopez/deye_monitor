@@ -7,7 +7,7 @@
 static constexpr uint32_t STORE_DAYS = 730;
 
 // ── Registro de 5 minutos ─────────────────────────────────────────────────
-// 32 bytes exactos — no cambiar orden sin incrementar versión de formato
+// 16 bytes exactos — no cambiar orden sin incrementar versión de formato
 #pragma pack(push, 1)
 struct Record5Min {
     uint32_t timestamp;     // epoch UTC
