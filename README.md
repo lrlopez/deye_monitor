@@ -48,7 +48,7 @@ Compatible con **ESP32-S3** (pantalla 480×272 px) y **ESP32-P4** (pantalla Guit
 - Dashboard de tiempo real con 4 tarjetas
 - Gráfica diaria con líneas temporales de 5 variables
 - Estadísticas diarias con donuts de consumo/producción, navegable día a día
-- **Perfil de energía mensual:** gráfica de barras apiladas con balance diario FV/Red/Batería, navegable mes a mes
+- **Perfil de energía mensual:** gráfica de barras apiladas con balance diario FV/Red/Batería, navegable mes a mes; popup con valores exactos en kWh al tocar un día; tap en el título para volver al mes actual
 - Pantalla de configuración con scroll y teclado virtual
 - Calendario mensual para selección directa de fecha
 - Modo nocturno con brillo configurable y horario automático
@@ -186,9 +186,10 @@ deye-monitor/
 │   ├── psram_alloc.h / .cpp       # Allocator LVGL → PSRAM
 │   │
 │   ├── dashboard.h / .cpp         # Pantalla 0: tiempo real
-│   ├── stats_screen.h / .cpp      # Pantalla 1: estadísticas diarias
-│   ├── chart_screen.h / .cpp      # Pantalla 2: gráfica diaria
-│   ├── config_screen.h / .cpp     # Pantalla 3: configuración
+│   ├── chart_screen.h / .cpp      # Pantalla 1: gráfica diaria
+│   ├── stats_screen.h / .cpp      # Pantalla 2: estadísticas diarias
+│   ├── energy_profile.h / .cpp    # Pantalla 3: perfil de energía mensual
+│   ├── config_screen.h / .cpp     # Pantalla 4: configuración
 │   ├── splash_screen.h / .cpp     # Pantalla de inicio
 │   ├── calendar_popup.h / .cpp    # Calendario modal
 │   ├── pagination_dots.h / .cpp   # Indicador de posición
@@ -228,16 +229,7 @@ Vista principal con datos en tiempo real actualizados cada 5 segundos.
                     ● ○ ○ ○ ○
 ```
 
-### Pantalla 1 — Estadísticas diarias
-
-Donuts de distribución de energía con navegación día a día y selector de calendario.
-
-- **CONSUMO:** Solar directo | Descarga batería | Importación
-- **PRODUCCIÓN:** Autoconsumo | Carga batería | Exportación
-- Tap en el título de fecha → volver a hoy
-- Botón 📅 → calendario mensual con días coloreados según disponibilidad de datos
-
-### Pantalla 2 — Gráfica diaria
+### Pantalla 1 — Gráfica diaria
 
 Gráfica de líneas con 5 series temporales por hora en una sola vista unificada:
 
@@ -256,7 +248,28 @@ El SOC se superpone a las series de potencia con su propio eje de porcentaje a l
 - Autoescalado o escala fija configurable
 - Refresco automático al llegar las 00:00
 
-### Pantalla 3 — Configuración
+### Pantalla 2 — Estadísticas diarias
+
+Donuts de distribución de energía con navegación día a día y selector de calendario.
+
+- **CONSUMO:** Solar directo | Descarga batería | Importación
+- **PRODUCCIÓN:** Autoconsumo | Carga batería | Exportación
+- Tap en el título de fecha → volver a hoy
+- Botón 📅 → calendario mensual con días coloreados según disponibilidad de datos
+
+### Pantalla 3 — Perfil de energía mensual
+
+Gráfica de barras apiladas simétricas con el balance energético de cada día del mes:
+
+- **Barra superior (positivo):** FV + Importación de red + Descarga batería
+- **Barra inferior (negativo):** Consumo + Exportación a red + Carga batería
+- Escala automática cada 20 kWh a partir de 60 kWh
+- Navegación mes a mes con los botones `‹` / `›`
+- **Tap en una barra** → popup con los valores exactos en kWh de cada concepto
+- **Tap en el título del mes** → regresa al mes actual (el título se muestra en azul cuando se visualiza un mes anterior)
+- La pantalla se actualiza automáticamente al llegar nuevos datos del inversor
+
+### Pantalla 4 — Configuración
 
 Formulario scrollable con teclado virtual:
 

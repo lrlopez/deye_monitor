@@ -8,6 +8,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ---
 
+## [v2.0.9] - 2026-05-24
+
+### Añadido
+
+- **Popup de detalle en perfil de energía:** Al pulsar sobre la barra de un día aparece un popup con los valores exactos en kWh de FV, importación, descarga de batería, consumo, exportación y carga de batería.
+- **Volver al mes actual en perfil de energía:** El título del mes se muestra en azul cuando se está visualizando un mes anterior; pulsarlo regresa directamente al mes actual.
+
+### Corregido
+
+- **Perfil de energía — actualización automática:** La pantalla solo se refresca cuando llegan nuevos datos del inversor y únicamente si se está viendo el mes actual; los meses históricos no se recargan innecesariamente.
+
+---
+
 ## [v2.0.8] - 2026-05-24
 
 ### Añadido

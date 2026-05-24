@@ -34,6 +34,11 @@
 #define EP_CHART_H   (SCREEN_HEIGHT - EP_CHART_Y)
 #define EP_CHART_W   (SCREEN_WIDTH - EP_PAD_L - EP_PAD_R)
 
+// ── Popup ─────────────────────────────────────────────────────────────────
+#define EP_POPUP_W     SX(168)
+#define EP_POPUP_VAL_X SX(88)
+#define EP_POPUP_H     (FONT_SMALL_SIZE + SY(6) + 6 * POPUP_ROW_H + POPUP_PAD * 2)
+
 struct DayBar {
     float pv;       // producción FV
     float grid_imp; // importación red
@@ -58,6 +63,13 @@ static lv_obj_t* s_chart_obj = nullptr;
 static lv_obj_t* s_no_data   = nullptr;
 static bool      s_active       = false;
 static bool      s_needs_reload = false;
+
+// Popup de detalle al pulsar un día
+static lv_obj_t* s_popup        = nullptr;
+static lv_obj_t* s_vline        = nullptr;
+static int       s_selected_day = -1;
+static lv_obj_t* s_popup_title  = nullptr;
+static lv_obj_t* s_popup_vals[6];
 
 static const char* const EP_MESES[] = {
     "Enero","Febrero","Marzo","Abril","Mayo","Junio",
@@ -134,6 +146,8 @@ static void update_nav() {
     char buf[32];
     snprintf(buf, sizeof(buf), "%s %d", EP_MESES[s_month - 1], s_year);
     lv_label_set_text(s_lbl_month, buf);
+    lv_obj_set_style_text_color(s_lbl_month,
+        s_offset == 0 ? C_WHITE : C_ACCENT, 0);
 
     (s_offset <= -24) ? lv_obj_add_state(s_btn_prev, LV_STATE_DISABLED)
                       : lv_obj_remove_state(s_btn_prev, LV_STATE_DISABLED);
@@ -298,12 +312,12 @@ static void chart_draw_cb(lv_event_t* e) {
 
     // ── Leyenda 2 filas (positivo fila 0, negativo fila 1) ────────────────
     struct { const char* lbl; lv_color_t col; } legs[6] = {
-        { "FV",           EP_CC_PV   },
-        { "Importacion",  EP_CC_IMP  },
-        { "Bat. desc.",   EP_CC_DIS  },
-        { "Consumo",      EP_CN_LOAD },
-        { "Exportacion",  EP_CN_EXP  },
-        { "Carga bat.",   EP_CN_CHG  },
+        { "FV",            EP_CC_PV   },
+        { "Importacion",   EP_CC_IMP  },
+        { "Descarga bat.", EP_CC_DIS  },
+        { "Consumo",       EP_CN_LOAD },
+        { "Exportacion",   EP_CN_EXP  },
+        { "Carga bat.",    EP_CN_CHG  },
     };
 
     lv_draw_rect_dsc_t dotdsc;
@@ -351,12 +365,85 @@ static void ep_reload() {
     update_nav();
     lv_obj_invalidate(s_chart_obj);
 
+    s_selected_day = -1;
+    if (s_popup) lv_obj_add_flag(s_popup, LV_OBJ_FLAG_HIDDEN);
+    if (s_vline) lv_obj_add_flag(s_vline, LV_OBJ_FLAG_HIDDEN);
+
     bool has_data = false;
     for (int d = 0; d < s_ndays; d++) {
         if (s_bars[d].valid) { has_data = true; break; }
     }
     has_data ? lv_obj_add_flag(s_no_data, LV_OBJ_FLAG_HIDDEN)
              : lv_obj_remove_flag(s_no_data, LV_OBJ_FLAG_HIDDEN);
+}
+
+// ── Popup de detalle ──────────────────────────────────────────────────────
+static void show_popup_ep(int day) {
+    if (day < 0 || day >= s_ndays || !s_popup || !s_vline) return;
+    if (!s_bars[day].valid) return;
+
+    if (day == s_selected_day) {
+        s_selected_day = -1;
+        lv_obj_add_flag(s_popup, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_vline, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    s_selected_day = day;
+
+    float   slot_f = (s_ndays > 0) ? (float)EP_CHART_W / s_ndays : 1.0f;
+    int32_t line_x = EP_PAD_L + (int32_t)((day + 0.5f) * slot_f);
+    int32_t bar_ch = EP_CHART_H - EP_XLAB_H - EP_LEG_H;
+
+    lv_obj_set_pos(s_vline, line_x, EP_CHART_Y);
+    lv_obj_set_size(s_vline, 1, bar_ch);
+    lv_obj_remove_flag(s_vline, LV_OBJ_FLAG_HIDDEN);
+
+    char title[32];
+    snprintf(title, sizeof(title), "%d de %s", day + 1, EP_MESES[s_month - 1]);
+    lv_label_set_text(s_popup_title, title);
+
+    const DayBar& b = s_bars[day];
+    float vals[6] = { b.pv, b.grid_imp, b.batt_dis, b.load, b.grid_exp, b.batt_chg };
+    char vbuf[14];
+    for (int i = 0; i < 6; i++) {
+        if (b.valid)
+            snprintf(vbuf, sizeof(vbuf), "%.1f kWh", vals[i]);
+        else
+            snprintf(vbuf, sizeof(vbuf), "- kWh");
+        lv_label_set_text(s_popup_vals[i], vbuf);
+    }
+
+    int32_t px = line_x + SX(4);
+    if (px + EP_POPUP_W > SCREEN_WIDTH - EP_PAD_R)
+        px = line_x - EP_POPUP_W - SX(4);
+    if (px < 0) px = SX(2);
+    int32_t py = EP_CHART_Y + SY(6);
+    lv_obj_set_pos(s_popup, px, py);
+    lv_obj_remove_flag(s_popup, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void popup_close_ep_cb(lv_event_t*) {
+    s_selected_day = -1;
+    if (s_popup) lv_obj_add_flag(s_popup, LV_OBJ_FLAG_HIDDEN);
+    if (s_vline) lv_obj_add_flag(s_vline, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void chart_click_ep_cb(lv_event_t* e) {
+    lv_indev_t* indev = lv_indev_get_act();
+    if (!indev) return;
+    lv_point_t pt;
+    lv_indev_get_point(indev, &pt);
+
+    lv_area_t coords;
+    lv_obj_get_coords(s_chart_obj, &coords);
+
+    int32_t rel_x = pt.x - coords.x1 - EP_PAD_L;
+    if (rel_x < 0 || s_ndays <= 0) return;
+
+    float slot_f = (float)EP_CHART_W / s_ndays;
+    int   day    = (int)((float)rel_x / slot_f);
+    if (day < 0 || day >= s_ndays) return;
+    show_popup_ep(day);
 }
 
 // ── Helpers de UI ─────────────────────────────────────────────────────────
@@ -368,6 +455,7 @@ static lv_obj_t* make_nav_btn(lv_obj_t* parent, const char* sym) {
     lv_obj_set_style_border_width(btn, 0, 0);
     lv_obj_set_style_radius(btn, UI_RADIUS, 0);
     lv_obj_set_style_pad_all(btn, 0, 0);
+    lv_obj_set_style_opa(btn, LV_OPA_40, LV_STATE_DISABLED);
     lv_obj_remove_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* lbl = lv_label_create(btn);
@@ -407,6 +495,13 @@ void energy_profile_init(lv_obj_t* tile) {
     lv_obj_set_style_text_color(s_lbl_month, C_WHITE, 0);
     lv_obj_set_style_text_font(s_lbl_month, &FONT_NORMAL, 0);
     lv_obj_center(s_lbl_month);
+    lv_obj_add_flag(s_lbl_month, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(s_lbl_month, SX(20));
+    lv_obj_add_event_cb(s_lbl_month, [](lv_event_t*) {
+        if (s_offset == 0) return;
+        s_offset = 0;
+        ep_reload();
+    }, LV_EVENT_CLICKED, nullptr);
 
     s_btn_next = make_nav_btn(nav, LV_SYMBOL_RIGHT);
     lv_obj_set_pos(s_btn_next, SCREEN_WIDTH - NAV_BTN_W, (NAV_H - NAV_BTN_H) / 2);
@@ -424,6 +519,7 @@ void energy_profile_init(lv_obj_t* tile) {
     lv_obj_set_style_pad_all(s_chart_obj, 0, 0);
     lv_obj_remove_flag(s_chart_obj, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(s_chart_obj, chart_draw_cb, LV_EVENT_DRAW_MAIN, nullptr);
+    lv_obj_add_event_cb(s_chart_obj, chart_click_ep_cb, LV_EVENT_CLICKED, nullptr);
 
     s_no_data = lv_label_create(s_chart_obj);
     lv_label_set_text(s_no_data, "Sin datos para este mes");
@@ -432,17 +528,86 @@ void energy_profile_init(lv_obj_t* tile) {
     lv_obj_align(s_no_data, LV_ALIGN_CENTER, 0, 0);
     lv_obj_add_flag(s_no_data, LV_OBJ_FLAG_HIDDEN);
 
+    // ── Línea vertical de selección ───────────────────────────────────────
+    s_vline = lv_obj_create(s_tile);
+    lv_obj_set_size(s_vline, 1, EP_CHART_H);
+    lv_obj_set_style_bg_color(s_vline, C_WHITE, 0);
+    lv_obj_set_style_bg_opa(s_vline, LV_OPA_40, 0);
+    lv_obj_set_style_border_width(s_vline, 0, 0);
+    lv_obj_set_style_radius(s_vline, 0, 0);
+    lv_obj_set_style_pad_all(s_vline, 0, 0);
+    lv_obj_remove_flag(s_vline, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(s_vline, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(s_vline, LV_OBJ_FLAG_HIDDEN);
+
+    // ── Popup de detalle ──────────────────────────────────────────────────
+    s_popup = lv_obj_create(s_tile);
+    lv_obj_set_size(s_popup, EP_POPUP_W, EP_POPUP_H);
+    lv_obj_set_style_bg_color(s_popup, lv_color_hex(0x1C2128), 0);
+    lv_obj_set_style_bg_opa(s_popup, 247, 0);
+    lv_obj_set_style_border_color(s_popup, lv_color_hex(0x30363D), 0);
+    lv_obj_set_style_border_width(s_popup, 1, 0);
+    lv_obj_set_style_border_opa(s_popup, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(s_popup, SS(6), 0);
+    lv_obj_set_style_pad_all(s_popup, 0, 0);
+    lv_obj_remove_flag(s_popup, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_popup, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_event_cb(s_popup, popup_close_ep_cb, LV_EVENT_CLICKED, nullptr);
+
+    s_popup_title = lv_label_create(s_popup);
+    lv_obj_set_pos(s_popup_title, POPUP_PAD, POPUP_PAD);
+    lv_obj_set_style_text_font(s_popup_title, &FONT_SMALL, 0);
+    lv_obj_set_style_text_color(s_popup_title, C_MUTED, 0);
+    lv_label_set_text(s_popup_title, "");
+
+    const char* const row_names[6] = {
+        "FV", "Import.", "Desc. bat.", "Consumo", "Export.", "Carga bat."
+    };
+    lv_color_t row_colors[6] = {
+        EP_CC_PV, EP_CC_IMP, EP_CC_DIS, EP_CN_LOAD, EP_CN_EXP, EP_CN_CHG
+    };
+    for (int i = 0; i < 6; i++) {
+        int32_t ry = POPUP_PAD + FONT_SMALL_SIZE + SY(6) + i * POPUP_ROW_H;
+
+        lv_obj_t* dot = lv_obj_create(s_popup);
+        lv_obj_set_pos(dot, POPUP_PAD, ry + (POPUP_ROW_H - UI_DOT_SZ) / 2);
+        lv_obj_set_size(dot, UI_DOT_SZ, UI_DOT_SZ);
+        lv_obj_set_style_bg_color(dot, row_colors[i], 0);
+        lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(dot, 0, 0);
+        lv_obj_set_style_radius(dot, UI_DOT_SZ / 2, 0);
+        lv_obj_set_style_pad_all(dot, 0, 0);
+        lv_obj_remove_flag(dot, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_remove_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
+
+        lv_obj_t* lbl_name = lv_label_create(s_popup);
+        lv_obj_set_pos(lbl_name, POPUP_PAD + UI_DOT_SZ + SX(4), ry);
+        lv_obj_set_style_text_font(lbl_name, &FONT_SMALL, 0);
+        lv_obj_set_style_text_color(lbl_name, C_MUTED, 0);
+        lv_label_set_text(lbl_name, row_names[i]);
+
+        s_popup_vals[i] = lv_label_create(s_popup);
+        lv_obj_set_pos(s_popup_vals[i], POPUP_PAD + EP_POPUP_VAL_X, ry);
+        lv_obj_set_style_text_font(s_popup_vals[i], &FONT_SMALL, 0);
+        lv_obj_set_style_text_color(s_popup_vals[i], row_colors[i], 0);
+        lv_label_set_text(s_popup_vals[i], "0.0 kWh");
+    }
+
     ep_reload();
 }
 
 void energy_profile_tick() {
-    static uint32_t last_day_epoch;
-
-    if (Store.getCurrentDaily().day_epoch != last_day_epoch) {
-        last_day_epoch = Store.getCurrentDaily().day_epoch;
-        s_needs_reload = true;
+    if (s_offset == 0) {
+        static uint32_t last_day_epoch;
+        static uint16_t last_load_wh;
+        const DailyRecord dr = Store.getCurrentDaily();
+        if (dr.day_epoch != last_day_epoch || dr.load_10wh != last_load_wh) {
+            last_day_epoch = dr.day_epoch;
+            last_load_wh   = dr.load_10wh;
+            s_needs_reload = true;
+        }
     }
-    
+
     if (s_needs_reload && s_active) {
         s_needs_reload = false;
         ep_reload();
@@ -451,5 +616,5 @@ void energy_profile_tick() {
 
 void energy_profile_set_active(bool active) {
     s_active = active;
-    if (active) s_needs_reload = true;
+    if (active && s_offset == 0) s_needs_reload = true;
 }
