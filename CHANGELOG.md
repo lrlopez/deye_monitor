@@ -6,6 +6,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Unreleased]
 
+### Añadido
+
+- **Aviso de actualización remota del firmware:** Mostrar mensaje en la pantalla táctil mientras se realiza una actualización remota del firmware.
+
 ### Corregido
 
 - **Etiquetas negativas en perfil de energía:** Se muestran correctamente las etiquetas de la parte negativa.

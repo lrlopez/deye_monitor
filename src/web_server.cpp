@@ -1105,6 +1105,12 @@ static void handle_upload() {
         }
         DBGSERIAL.printf("[OTA] Inicio: %s (%u bytes)\n",
                       upload.filename.c_str(), upload.totalSize);
+        // Pedir overlay OTA a Core 1 y esperar confirmación antes de tocar flash
+        extern volatile bool g_ota_request;
+        extern volatile bool g_ota_active;
+        g_ota_request = true;
+        uint32_t t0 = millis();
+        while (!g_ota_active && (millis() - t0 < 1500)) delay(10);
         if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
             DBGSERIAL.print("[OTA] Error al iniciar: ");
             Update.printError(DBGSERIAL);
