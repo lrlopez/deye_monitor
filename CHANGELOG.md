@@ -12,6 +12,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 - **Estabilidad interna de la caché:** Corregida una constante de tamaño hardcodeada en la caché de días que podría haber causado un fallo de memoria si se ampliaba la capacidad del historial.
 - **Sin pérdida de datos al reiniciar:** Al reiniciar el dispositivo desde la web (botón de reinicio o actualización OTA), el historial se guarda correctamente antes de apagar; antes podían perderse hasta 12 registros de 5 minutos.
 - **Fecha correcta en el cambio de hora:** La navegación por días históricos en las pantallas de estadísticas y gráfica ya calcula correctamente el día anterior al cambiar el horario de verano/invierno; antes podía mostrar el día equivocado en la madrugada del cambio.
+- **Primer arranque más robusto:** Al inicializar la memoria interna por primera vez, el sistema ya no arriesga un reinicio inesperado por vigilante de hardware durante el proceso de formateo.
 - **Protección de concurrencia en la caché:** Eliminada una ventana de tiempo en la lectura del historial de 5 minutos donde un escritor concurrente podría haber corrompido los datos en uso.
 - **Credenciales de Telegram:** La pantalla de configuración ya no permite introducir un token o chat ID más largo de lo que el sistema puede almacenar; antes se guardaba silenciosamente truncado.
 - **Diagnóstico de registros perdidos:** Si un registro horario o diario no se puede guardar por contención interna, ahora queda registrado en el log serie en lugar de descartarse silenciosamente.

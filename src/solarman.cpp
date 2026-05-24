@@ -76,9 +76,9 @@ int SolarmanClient::buildV5Frame(uint8_t* buf, uint16_t startReg, uint16_t count
 // ── Lectura de registros por TCP ──────────────────────────────────────────
 bool SolarmanClient::readRegisters(uint16_t startReg, uint16_t count, uint16_t* values) {
     WiFiClient client;
-    client.setTimeout(3);
+    client.setTimeout(3);      // segundos — tiempo máximo de espera para recibir datos
 
-    if (!client.connect(_ip, _port, 3000)) {
+    if (!client.connect(_ip, _port, 3000)) {   // ms — timeout de conexión TCP
         DBGSERIAL.println("[Solarman] Timeout conectando al datalogger");
         return false;
     }
