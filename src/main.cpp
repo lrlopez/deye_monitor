@@ -413,7 +413,7 @@ static void solarmanTask(void* /*pv*/) {
             if (new_hour != s_cur_hour) {
                 if (s_acc_n > 0 && s_snap_valid && local_d.valid) {
                     struct tm mid = now_tm;
-                    if (new_hour == 0) mid.tm_mday--;
+                    if (new_hour == 0) mid.tm_mday--;  // mktime() normaliza mday=0 al último día del mes anterior
                     mid.tm_hour = s_cur_hour;
                     mid.tm_min = 0; mid.tm_sec = 0; mid.tm_isdst = -1;
 
@@ -478,7 +478,7 @@ static void solarmanTask(void* /*pv*/) {
             // ── Cambio de día ─────────────────────────────────────────────
             if (new_day != s_cur_day) {
                 struct tm yesterday = now_tm;
-                yesterday.tm_mday--;
+                yesterday.tm_mday--;  // mktime() normaliza mday=0 al último día del mes anterior
                 yesterday.tm_hour = 0; yesterday.tm_min = 0;
                 yesterday.tm_sec  = 0; yesterday.tm_isdst = -1;
                 uint32_t dep_yesterday = (uint32_t)mktime(&yesterday);
