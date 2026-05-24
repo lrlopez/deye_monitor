@@ -207,22 +207,9 @@ static void close_ssid_list() {
 }
 
 static void ssid_item_cb(lv_event_t* e) {
-    lv_obj_t* btn = (lv_obj_t*)lv_event_get_target(e);
-    // El label del botón de lista lleva el SSID (primer label hijo)
-    lv_obj_t* lbl = lv_obj_get_child(btn, 0);
-    if (!lbl) return;
-
-    const char* full = lv_label_get_text(lbl);
-    // El texto tiene formato "● SSID_NAME (-XX dBm)"
-    // Extraemos solo el SSID: entre "● " y " ("
-    String s(full);
-    int start = s.indexOf(' ') + 1;        // después del símbolo
-    int end   = s.lastIndexOf(" (");
-    if (start > 0 && end > start)
-        lv_textarea_set_text(ta_ssid, s.substring(start, end).c_str());
-    else
-        lv_textarea_set_text(ta_ssid, full);
-
+    const char* ssid = (const char*)lv_event_get_user_data(e);
+    if (!ssid) return;
+    lv_textarea_set_text(ta_ssid, ssid);
     close_ssid_list();
 }
 
@@ -269,15 +256,18 @@ static void build_ssid_list(lv_obj_t* parent_screen) {
 
     // Ítem por red
     int shown = (n > 8) ? 8 : n;   // máximo 8 para no desbordarse
+    static char s_ssid_bufs[8][33]; // buffers estáticos para el SSID de cada ítem
     for (int i = 0; i < shown; i++) {
         int  ri   = idx[i];
         int  rssi = WiFi.RSSI(ri);
         bool open = (WiFi.encryptionType(ri) == WIFI_AUTH_OPEN);
 
+        strlcpy(s_ssid_bufs[i], WiFi.SSID(ri).c_str(), sizeof(s_ssid_bufs[i]));
+
         char txt[64];
         snprintf(txt, sizeof(txt), "%s %s (%d dBm)",
                  open ? LV_SYMBOL_WIFI : LV_SYMBOL_WIFI,
-                 WiFi.SSID(ri).c_str(), rssi);
+                 s_ssid_bufs[i], rssi);
 
         lv_obj_t* btn = lv_list_add_btn(ssid_list, nullptr, txt);
         lv_obj_set_style_bg_color(btn, C_LIST, 0);
@@ -290,7 +280,7 @@ static void build_ssid_list(lv_obj_t* parent_screen) {
             lv_obj_set_style_text_color(item_lbl, rssi_color(rssi), 0);
             lv_obj_set_style_text_font(item_lbl, &FONT_SMALL, 0);
         }
-        lv_obj_add_event_cb(btn, ssid_item_cb, LV_EVENT_CLICKED, nullptr);
+        lv_obj_add_event_cb(btn, ssid_item_cb, LV_EVENT_CLICKED, s_ssid_bufs[i]);
     }
 
     // Mover al frente para que quede sobre otros widgets
@@ -400,7 +390,7 @@ static void save_btn_cb(lv_event_t* /*e*/) {
     strncpy(cfg.wifi_ssid, lv_textarea_get_text(ta_ssid),          sizeof(cfg.wifi_ssid)-1);
     strncpy(cfg.wifi_pass, lv_textarea_get_text(ta_pass),          sizeof(cfg.wifi_pass)-1);
     strncpy(cfg.logger_ip, lv_textarea_get_text(ta_logger_ip),     sizeof(cfg.logger_ip)-1);
-    cfg.logger_serial = (uint32_t)atol(lv_textarea_get_text(ta_logger_serial));
+    cfg.logger_serial = (uint32_t)strtoul(lv_textarea_get_text(ta_logger_serial), nullptr, 10);
     {
         auto clamp16 = [](const char* s, uint16_t def) -> uint16_t {
             int v = atoi(s);
