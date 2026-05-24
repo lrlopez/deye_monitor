@@ -29,7 +29,6 @@ struct CachedHrlyDay {
     bool        valid;
     bool        loaded;
     uint8_t     hours_valid;   // cuántas horas tienen datos
-    HourlyRecord hours[24];
 };
 
 class PsramCache {
