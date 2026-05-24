@@ -9,6 +9,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 ### Corregido
 
 - **Arranque instantáneo con historial completo:** El dispositivo ya no reconstruye el índice de días escaneando todo el historial en cada arranque; ahora lo carga de un fichero guardado, haciendo el inicio prácticamente inmediato incluso con años de datos almacenados.
+- **Bot de Telegram más rápido al arrancar:** Los comandos del bot solo se registran en Telegram la primera vez (o cuando cambian); ya no se realiza una conexión segura innecesaria en cada reinicio.
 - **Estabilidad interna del almacenamiento:** Corregida una inconsistencia en la inicialización del índice de días en memoria que podría haber causado un fallo al inicio si se hubiera ampliado la capacidad de historial.
 - **Estabilidad interna de la caché:** Corregida una constante de tamaño hardcodeada en la caché de días que podría haber causado un fallo de memoria si se ampliaba la capacidad del historial.
 - **Sin pérdida de datos al reiniciar:** Al reiniciar el dispositivo desde la web (botón de reinicio o actualización OTA), el historial se guarda correctamente antes de apagar; antes podían perderse hasta 12 registros de 5 minutos.
