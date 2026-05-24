@@ -90,7 +90,9 @@ void PsramCache::_bg_task(void* pv) {
             loaded++;
         }
         self->unlock();
-        vTaskDelay(pdMS_TO_TICKS(20));   // ceder para que push() pueda adquirir el mutex
+        // Ceder al scheduler cada 10 días en lugar de cada 1:
+        // reduce el tiempo total de carga de ~29 s a ~3 s
+        if ((i % 10) == 9) vTaskDelay(pdMS_TO_TICKS(20));
     }
 
     uint32_t valid = 0;
