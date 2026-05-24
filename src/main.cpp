@@ -615,7 +615,7 @@ static void solarmanTask(void* /*pv*/) {
 
 // ── Setup ─────────────────────────────────────────────────────────────────
 void setup() {
-    DBGSERIAL.begin(115200);
+    DBGSERIAL.begin(DBG_UART, 115200);
     g_uptime_start = millis();
 
     // ── Tu código de display/touch aquí (ya configurado) ─────────────────

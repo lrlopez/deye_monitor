@@ -1,6 +1,7 @@
 #pragma once
 #include <esp_heap_caps.h>
 #include <Arduino.h>
+#include "safe_serial.h"
 
 // ── API interna de LVGL 9 (LV_USE_STDLIB_MALLOC = LV_STDLIB_CUSTOM) ──────
 // LVGL llama directamente a estos tres símbolos.

@@ -1,4 +1,5 @@
 #pragma once
+#include "safe_serial.h"
 
 // ── WiFi ──────────────────────────────────────────────────────────────────
 #define WIFI_SSID   ""
