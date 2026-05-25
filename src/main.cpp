@@ -132,6 +132,7 @@ DailyStats               g_daily;
 SemaphoreHandle_t        g_mutex;
 static volatile bool     g_energy_ready = false;
 static volatile bool     g_daily_ready  = false;
+static lv_obj_t*         g_tileview     = nullptr;
 static lv_obj_t*         g_tile_dash    = nullptr;
 static lv_obj_t*         g_tile_chart   = nullptr;
 static lv_obj_t*         g_tile_stats   = nullptr;
@@ -772,6 +773,7 @@ void setup() {
     lv_obj_set_style_bg_opa(g_main_screen, LV_OPA_COVER, 0);
 
     lv_obj_t* tv = lv_tileview_create(g_main_screen);
+    g_tileview = tv;
     lv_obj_set_size(tv, SCREEN_WIDTH, SCREEN_HEIGHT);
     lv_obj_set_pos(tv, 0, 0);
     lv_obj_set_scrollbar_mode(tv, LV_SCROLLBAR_MODE_OFF);
@@ -927,29 +929,32 @@ void loop() {
     lv_timer_handler();
 
     // ── Detectar toque: inactividad + doble-tap para volver al dashboard ──
-    static bool     s_last_touch  = false;
-    static uint32_t s_last_tap_ms = 0;
+    // Se mide desde el primer press hasta el segundo press (< 600 ms).
+    static bool     s_was_pressed  = false;
+    static uint32_t s_first_tap_ms = 0;
 
     lv_indev_t* indev = lv_indev_get_next(nullptr);
     while (indev) {
         if (lv_indev_get_type(indev) == LV_INDEV_TYPE_POINTER) {
             bool pressed = (lv_indev_get_state(indev) == LV_INDEV_STATE_PRESSED);
-            if (pressed) Backlight.onTouch();
-            if (!pressed && s_last_touch) {   // flanco de bajada = tap completo
-                uint32_t now = millis();
-                if (s_last_tap_ms && now - s_last_tap_ms < 400) {
-                    lv_obj_t* tv = lv_obj_get_child(g_main_screen, 0);
-                    if (tv) {
-                        lv_obj_t* cur = lv_tileview_get_tile_active(tv);
-                        if (cur && cur != g_tile_dash)
-                            lv_tileview_set_tile(tv, g_tile_dash, LV_ANIM_ON);
+            if (pressed) {
+                Backlight.onTouch();
+                if (!s_was_pressed) {   // flanco de subida = nuevo press
+                    uint32_t now = millis();
+                    if (s_first_tap_ms && now - s_first_tap_ms < 600) {
+                        // Segundo press dentro de la ventana → doble tap
+                        if (g_tileview) {
+                            lv_obj_t* cur = lv_tileview_get_tile_active(g_tileview);
+                            if (cur && cur != g_tile_dash)
+                                lv_tileview_set_tile(g_tileview, g_tile_dash, LV_ANIM_ON);
+                        }
+                        s_first_tap_ms = 0;
+                    } else {
+                        s_first_tap_ms = now;
                     }
-                    s_last_tap_ms = 0;
-                } else {
-                    s_last_tap_ms = now;
                 }
             }
-            s_last_touch = pressed;
+            s_was_pressed = pressed;
             break;
         }
         indev = lv_indev_get_next(indev);

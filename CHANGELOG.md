@@ -6,6 +6,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Unreleased]
 
+### Corregido
+
+- **Doble tap para volver al dashboard:** Ahora funciona en todos los casos.
+
 ---
 
 ## [v3.1.0] - 2026-05-25
