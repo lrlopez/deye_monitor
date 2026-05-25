@@ -229,7 +229,7 @@ void dashboard_init(lv_obj_t* parent)
     // ── BATERÍA ───────────────────────────────────────────────────────────
     {
         lv_obj_t* c = make_card(parent, x0, y1,
-                                 LV_SYMBOL_BATTERY_FULL " BATER\xC3\xADA", C_BATT_OK);
+                                 LV_SYMBOL_BATTERY_FULL " BATER\xC3\xAD\x41", C_BATT_OK);
 
         lbl_batt_status = make_info(c, INFO_Y1, "--");
 

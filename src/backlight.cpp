@@ -1,4 +1,5 @@
 #include "backlight.h"
+#include "safe_serial.h"
 #include <Arduino.h>
 #include <time.h>
 

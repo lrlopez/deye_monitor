@@ -508,7 +508,7 @@ void chart_screen_init(lv_obj_t* parent) {
     lv_obj_set_style_text_align(s_no_data, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(s_no_data, &FONT_NORMAL, 0);
     lv_obj_set_style_text_color(s_no_data, C_MUTED, 0);
-    lv_label_set_text(s_no_data, "Sin datos para este d\xC3\xADa");
+    lv_label_set_text(s_no_data, "Sin datos para este d\xC3\xAD\x61");
 
     // ── Línea vertical ────────────────────────────────────────────────────
     s_vline = lv_obj_create(parent);

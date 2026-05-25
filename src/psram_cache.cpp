@@ -1,4 +1,5 @@
 #include "psram_cache.h"
+#include "safe_serial.h"
 #include <time.h>
 #include <string.h>
 

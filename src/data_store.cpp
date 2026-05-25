@@ -1,4 +1,5 @@
 #include "data_store.h"
+#include "safe_serial.h"
 #include <time.h>
 
 const char* DataStore::META_FILE = "/meta2.bin";

@@ -600,42 +600,17 @@
 /*==================
  *   FONT USAGE
  *===================*/
-
-/* Montserrat fonts with ASCII range and some symbols using bpp = 4
- * https://fonts.google.com/specimen/Montserrat */
-#if defined(BOARD_GUITION_JC1060P470)
 #define LV_FONT_MONTSERRAT_8  0
 #define LV_FONT_MONTSERRAT_10 0
 #define LV_FONT_MONTSERRAT_12 0
-#define LV_FONT_MONTSERRAT_14 1
+#define LV_FONT_MONTSERRAT_14 0
 #define LV_FONT_MONTSERRAT_16 0
 #define LV_FONT_MONTSERRAT_18 0
 #define LV_FONT_MONTSERRAT_20 0
 #define LV_FONT_MONTSERRAT_22 0
 #define LV_FONT_MONTSERRAT_24 0
 #define LV_FONT_MONTSERRAT_26 0
-#define LV_FONT_MONTSERRAT_28 1
-#define LV_FONT_MONTSERRAT_32 1
-#define LV_FONT_MONTSERRAT_34 0
-#define LV_FONT_MONTSERRAT_36 0
-#define LV_FONT_MONTSERRAT_38 0
-#define LV_FONT_MONTSERRAT_40 0
-#define LV_FONT_MONTSERRAT_42 1
-#define LV_FONT_MONTSERRAT_44 0
-#define LV_FONT_MONTSERRAT_46 0
-#define LV_FONT_MONTSERRAT_48 1
-#else
-#define LV_FONT_MONTSERRAT_8  0
-#define LV_FONT_MONTSERRAT_10 0
-#define LV_FONT_MONTSERRAT_12 1
-#define LV_FONT_MONTSERRAT_14 1
-#define LV_FONT_MONTSERRAT_16 0
-#define LV_FONT_MONTSERRAT_18 0
-#define LV_FONT_MONTSERRAT_20 0
-#define LV_FONT_MONTSERRAT_22 1
-#define LV_FONT_MONTSERRAT_24 0
-#define LV_FONT_MONTSERRAT_26 0
-#define LV_FONT_MONTSERRAT_28 1
+#define LV_FONT_MONTSERRAT_28 0
 #define LV_FONT_MONTSERRAT_32 0
 #define LV_FONT_MONTSERRAT_34 0
 #define LV_FONT_MONTSERRAT_36 0
@@ -645,7 +620,6 @@
 #define LV_FONT_MONTSERRAT_44 0
 #define LV_FONT_MONTSERRAT_46 0
 #define LV_FONT_MONTSERRAT_48 0
-#endif
 
 /* Demonstrate special features */
 #define LV_FONT_MONTSERRAT_28_COMPRESSED    0  /**< bpp = 3 */
@@ -666,7 +640,30 @@
  *  #define LV_FONT_CUSTOM_DECLARE   LV_FONT_DECLARE(my_font_1) LV_FONT_DECLARE(my_font_2)
  *  @endcode
  */
-//#define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(montserrat_14) LV_FONT_DECLARE(montserrat_28);
+/* Fuentes Montserrat personalizadas en src/fonts/ (glifos españoles + FA5).
+ *
+ * Los tamaños con fuente propia NO se definen aquí: el #ifndef del .c generado
+ * los establece a 1 y se compilan solos. Definirlos a 0 suprimiría también el
+ * .c personalizado; definirlos a 1 produciría símbolo duplicado con el built-in.
+ * Los tamaños sin fuente propia se fuerzan a 0 para no compilar la built-in.
+ *
+ * Sunton  (4827S043): usa tamaños 12, 14, 22, 28
+ * Guition (JC1060P470): usa tamaños 14, 28, 32, 42, 48              */
+
+#if defined(BOARD_GUITION_JC1060P470)
+#define LV_FONT_CUSTOM_DECLARE \
+    LV_FONT_DECLARE(lv_font_montserrat_14) \
+    LV_FONT_DECLARE(lv_font_montserrat_28) \
+    LV_FONT_DECLARE(lv_font_montserrat_32) \
+    LV_FONT_DECLARE(lv_font_montserrat_42) \
+    LV_FONT_DECLARE(lv_font_montserrat_48)
+#else
+#define LV_FONT_CUSTOM_DECLARE \
+    LV_FONT_DECLARE(lv_font_montserrat_12) \
+    LV_FONT_DECLARE(lv_font_montserrat_14) \
+    LV_FONT_DECLARE(lv_font_montserrat_22) \
+    LV_FONT_DECLARE(lv_font_montserrat_28)
+#endif
 
 /** Always set a default font */
 #define LV_FONT_DEFAULT &lv_font_montserrat_14

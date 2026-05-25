@@ -540,9 +540,9 @@ void config_screen_init(lv_obj_t* parent) {
     lv_obj_set_style_text_font(scan_btn_lbl, &FONT_NORMAL, 0);
     lv_obj_center(scan_btn_lbl);
 
-    make_row_label(sec_wifi, SY(62), "Contrasena");
+    make_row_label(sec_wifi, SY(62), "Contrase\xC3\xB1\x61");
     ta_pass = make_field(sec_wifi, CFG_LBL_W, SY(62),
-                         CFG_FIELD_W + CFG_SCAN_BTN_W + SX(4), true, "Contrasena WiFi");
+                         CFG_FIELD_W + CFG_SCAN_BTN_W + SX(4), true, "Contrase\xC3\xB1\x61 WiFi");
     lv_textarea_set_text(ta_pass, cfg.wifi_pass);
     lv_obj_add_event_cb(ta_pass, ta_event_cb, LV_EVENT_FOCUSED,   nullptr);
     lv_obj_add_event_cb(ta_pass, ta_event_cb, LV_EVENT_DEFOCUSED, nullptr);
@@ -557,7 +557,7 @@ void config_screen_init(lv_obj_t* parent) {
     lv_obj_add_event_cb(ta_logger_ip, ta_event_cb, LV_EVENT_FOCUSED,   nullptr);
     lv_obj_add_event_cb(ta_logger_ip, ta_event_cb, LV_EVENT_DEFOCUSED, nullptr);
 
-    make_row_label(sec_inv, SY(62), "Num. Serie");
+    make_row_label(sec_inv, SY(62), "N\xC3\xBAm. Serie");
     ta_logger_serial = make_field(sec_inv, CFG_LBL_W, SY(62),
                                   CFG_FIELD_W + CFG_SCAN_BTN_W + SX(4), false, "Decimal (etiqueta)");
     char sbuf[16];
@@ -568,7 +568,7 @@ void config_screen_init(lv_obj_t* parent) {
 
     // ── Inversor: capacidades de la instalación ───────────────────────────
     const int FW = CFG_FIELD_W + CFG_SCAN_BTN_W + SX(4);
-    make_row_label(sec_inv, SY(106), "Inv. max W");
+    make_row_label(sec_inv, SY(106), "Inv. m\xC3\xA1x W");
     lv_obj_t* ta_inv_max_w = make_field(sec_inv, CFG_LBL_W, SY(106), FW, false, "6000");
     { char b[8]; snprintf(b, sizeof(b), "%u", cfg.inv_max_w);
       lv_textarea_set_text(ta_inv_max_w, b); }
@@ -576,7 +576,7 @@ void config_screen_init(lv_obj_t* parent) {
     lv_obj_add_event_cb(ta_inv_max_w, ta_event_cb, LV_EVENT_FOCUSED,   nullptr);
     lv_obj_add_event_cb(ta_inv_max_w, ta_event_cb, LV_EVENT_DEFOCUSED, nullptr);
 
-    make_row_label(sec_inv, SY(150), "Red max W");
+    make_row_label(sec_inv, SY(150), "Red m\xC3\xA1x W");
     lv_obj_t* ta_grid_max_w = make_field(sec_inv, CFG_LBL_W, SY(150), FW, false, "6000");
     { char b[8]; snprintf(b, sizeof(b), "%u", cfg.grid_max_w);
       lv_textarea_set_text(ta_grid_max_w, b); }
@@ -598,7 +598,7 @@ void config_screen_init(lv_obj_t* parent) {
 
     // ── Sección Gráfica ───────────────────────────────────────────────────────
     // h=100: fila checkbox(16+10) + fila label/valor(20) + fila slider(24) + padding
-    lv_obj_t* sec_chart = make_section(parent, LV_SYMBOL_CHART " GR\xC3\x81FICA", SEC_CHART_Y, SEC_CHART_H);
+    lv_obj_t* sec_chart = make_section(parent, LV_SYMBOL_CHART " GR\xC3\x81\x46ICA", SEC_CHART_Y, SEC_CHART_H);
 
     // Fila 1: checkbox autoescalado  (y=16)
     cb_autoscale = lv_checkbox_create(sec_chart);
@@ -613,7 +613,7 @@ void config_screen_init(lv_obj_t* parent) {
     lv_obj_set_pos(lkw, 0, SY(46));
     lv_obj_set_style_text_font(lkw, &FONT_SMALL, 0);
     lv_obj_set_style_text_color(lkw, C_MUTED, 0);
-    lv_label_set_text(lkw, "Max kW:");
+    lv_label_set_text(lkw, "M\xC3\xA1x kW:");
 
     lv_obj_t* CFG_LBL_kw_val = lv_label_create(sec_chart);
     lv_obj_set_pos(CFG_LBL_kw_val, SX(70), SY(46));
@@ -648,7 +648,7 @@ void config_screen_init(lv_obj_t* parent) {
     // ── Sección Estado red ────────────────────────────────────────────────────
     lv_obj_t* sec_net = make_section(parent, LV_SYMBOL_GPS " ESTADO RED", SEC_NET_Y, SEC_NET_H);
     lbl_ip   = make_info_row(sec_net, SY(18), "IP ESP32");
-    lbl_rssi = make_info_row(sec_net, SY(38), "Senal WiFi");
+    lbl_rssi = make_info_row(sec_net, SY(38), "Se\xC3\xB1\x61l WiFi");
 
     make_row_label(sec_net, SY(62), "mDNS");
     s_ta_mdns = make_field(sec_net, CFG_LBL_W, SY(62),
@@ -905,7 +905,7 @@ void config_screen_init(lv_obj_t* parent) {
     {
         String pw_status = Storage.loadAdminPassword().isEmpty()
             ? "Sin proteccion (acceso libre)"
-            : "Contrasena configurada";
+            : "Contrase\xC3\xB1\x61 configurada";
 
         lv_obj_t* sec_admin = make_section(parent,
             LV_SYMBOL_WARNING " ACCESO WEB", SEC_ADMIN_Y, SEC_ADMIN_H);
@@ -919,7 +919,7 @@ void config_screen_init(lv_obj_t* parent) {
 
         make_row_label(sec_admin, SY(40), "Nueva clave");
         s_ta_admin_pass = make_field(sec_admin, CFG_LBL_W, SY(40),
-            CFG_SECTION_W - CFG_LBL_W - CFG_SEC_PAD*2, true, "Nueva contrasena web...");
+            CFG_SECTION_W - CFG_LBL_W - CFG_SEC_PAD*2, true, "Nueva contrase\xC3\xB1\x61 web...");
         lv_obj_add_event_cb(s_ta_admin_pass, ta_event_cb, LV_EVENT_FOCUSED,   nullptr);
         lv_obj_add_event_cb(s_ta_admin_pass, ta_event_cb, LV_EVENT_DEFOCUSED, nullptr);
     }
