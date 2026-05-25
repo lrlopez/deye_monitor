@@ -185,8 +185,8 @@ static lv_obj_t* make_slider_row(lv_obj_t* parent, int y,
 
 // ── Icono de señal WiFi según RSSI ─────────────────────────────────────────
 static const char* rssi_icon(int rssi) {
-    if (rssi >= -75) return LV_SYMBOL_WIFI;          // buena/media (color vía rssi_color)
-    return LV_SYMBOL_WIFI_OFF;                       // débil/inutilizable
+    (void)rssi;
+    return LV_SYMBOL_WIFI;   // FA5 Free no tiene iconos de señal parcial; el nivel se indica por color
 }
 
 static lv_color_t rssi_color(int rssi) {

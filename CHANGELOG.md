@@ -9,7 +9,6 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 ### Mejorado
 
 - **Iconos más descriptivos en la pantalla principal:** La tarjeta Solar muestra ahora un icono de sol en lugar del rayo de carga, y la tarjeta de Red usa un enchufe en lugar del símbolo WiFi, haciendo más intuitivo de un vistazo qué representa cada valor. El botón de calendario en las pantallas de estadísticas y gráfica muestra ahora un icono de calendario en lugar de una lista. La sección de gráfica en configuración usa un icono de gráfico de barras. La opción de horario nocturno incluye un icono de luna.
-- **Indicador visual de señal WiFi débil:** En la lista de redes WiFi disponibles, las redes con señal muy débil (RSSI < −75 dBm) muestran ahora el icono de WiFi tachado en lugar del icono normal; las redes con señal aceptable siguen usando el icono estándar con código de color (verde/amarillo/rojo).
 - **Textos en pantalla con tildes y eñes correctas:** Corregidas doce cadenas de texto visible en pantalla que carecían de acento o tilde: «Configuración», «BATERÍA», «Sin producción», «PRODUCCIÓN», «Exportación», «Sin datos para este día» (en dos pantallas), «Importación» y «Exportación» en el perfil energético mensual, «Sin conexión», «Caché PSRAM» en la pantalla de inicio, y «GRÁFICA» en la configuración.
 
 ### Corregido
