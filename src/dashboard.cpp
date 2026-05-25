@@ -1,3 +1,4 @@
+#include <WiFi.h>
 #include "dashboard.h"
 #include "ui_constants.h"
 #include "config.h"
@@ -32,7 +33,7 @@ static uint16_t s_grid_max_w = GRID_MAX_W_DEF;
 static uint16_t s_load_max_w = INV_MAX_W_DEF;
 
 // ── Punteros a widgets actualizables ─────────────────────────────────────
-static lv_obj_t *lbl_clock, *lbl_selfcon, *lbl_sample_time;
+static lv_obj_t *lbl_clock, *lbl_selfcon, *lbl_sample_time, *lbl_wifi;
 
 static lv_obj_t *arc_solar,     *lbl_solar_val;
 static lv_obj_t *lbl_pv1,       *lbl_pv2;
@@ -166,8 +167,15 @@ void dashboard_init(lv_obj_t* parent)
     lv_obj_set_style_pad_ver(topbar, SY(3), 0);
     lv_obj_remove_flag(topbar, LV_OBJ_FLAG_SCROLLABLE);
 
+    // Icono WiFi — extremo izquierdo; color actualizado cada 5 s en dashboard_tick()
+    lbl_wifi = lv_label_create(topbar);
+    lv_obj_align(lbl_wifi, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_set_style_text_font(lbl_wifi, &FONT_NORMAL, 0);
+    lv_obj_set_style_text_color(lbl_wifi, C_MUTED, 0);  // gris hasta primera comprobación
+    lv_label_set_text(lbl_wifi, LV_SYMBOL_WIFI);
+
     lbl_clock = lv_label_create(topbar);
-    lv_obj_align(lbl_clock, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_align(lbl_clock, LV_ALIGN_LEFT_MID, SX(20), 0);
     lv_obj_set_style_text_font(lbl_clock, &FONT_NORMAL, 0);
     lv_obj_set_style_text_color(lbl_clock, C_MUTED, 0);
     lv_label_set_text(lbl_clock, "--:--:--");
@@ -395,23 +403,44 @@ void dashboard_update(const EnergyData& d)
     }
 }
 
-// ── Reloj ─────────────────────────────────────────────────────────────────
+// ── Reloj + icono WiFi ────────────────────────────────────────────────────
 void dashboard_tick()
 {
+    // ── Reloj (cada 1 s) ──────────────────────────────────────────────────
     static uint32_t s_last = 0;
-    if (millis() - s_last < 1000) return;
-    s_last = millis();
+    if (millis() - s_last >= 1000) {
+        s_last = millis();
 
-    struct tm ti;
-    if (!getLocalTime(&ti, 0)) return;
+        struct tm ti;
+        if (getLocalTime(&ti, 0)) {
+            static const char* MESES[] = {
+                "Ene","Feb","Mar","Abr","May","Jun",
+                "Jul","Ago","Sep","Oct","Nov","Dic"
+            };
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%d %s  %02d:%02d:%02d",
+                     ti.tm_mday, MESES[ti.tm_mon],
+                     ti.tm_hour, ti.tm_min, ti.tm_sec);
+            lv_label_set_text(lbl_clock, buf);
+        }
+    }
 
-    static const char* MESES[] = {
-        "Ene","Feb","Mar","Abr","May","Jun",
-        "Jul","Ago","Sep","Oct","Nov","Dic"
-    };
-    char buf[32];
-    snprintf(buf, sizeof(buf), "%d %s  %02d:%02d:%02d",
-             ti.tm_mday, MESES[ti.tm_mon],
-             ti.tm_hour, ti.tm_min, ti.tm_sec);
-    lv_label_set_text(lbl_clock, buf);
+    // ── Icono WiFi (cada 5 s) — WiFi.RSSI() es ligero pero no trivial ────
+    static bool     s_wifi_init = false;
+    static uint32_t s_wifi_last = 0;
+    if (!s_wifi_init || millis() - s_wifi_last >= 5000) {
+        s_wifi_init = true;
+        s_wifi_last = millis();
+
+        lv_color_t c;
+        if (WiFi.status() != WL_CONNECTED) {
+            c = C_MUTED;   // gris  — sin conexión
+        } else {
+            int32_t rssi = WiFi.RSSI();
+            c = (rssi > -60) ? C_OK   :   // verde  — buena señal
+                (rssi > -75) ? C_WARN :   // naranja — señal débil
+                               C_ERR;     // rojo   — señal muy débil
+        }
+        lv_obj_set_style_text_color(lbl_wifi, c, 0);
+    }
 }
