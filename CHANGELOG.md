@@ -6,6 +6,11 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Unreleased]
 
+### Mejorado
+
+- **Iconos más descriptivos en la pantalla principal:** La tarjeta Solar muestra ahora un icono de sol en lugar del rayo de carga, y la tarjeta de Red usa un enchufe en lugar del símbolo WiFi, haciendo más intuitivo de un vistazo qué representa cada valor. El botón de calendario en las pantallas de estadísticas y gráfica muestra ahora un icono de calendario en lugar de una lista. La sección de gráfica en configuración usa un icono de gráfico de barras. La opción de horario nocturno incluye un icono de luna.
+- **Textos en pantalla con tildes y eñes correctas:** Corregidas doce cadenas de texto visible en pantalla que carecían de acento o tilde: «Configuración», «BATERÍA», «Sin producción», «PRODUCCIÓN», «Exportación», «Sin datos para este día» (en dos pantallas), «Importación» y «Exportación» en el perfil energético mensual, «Sin conexión», «Caché PSRAM» en la pantalla de inicio, y «GRÁFICA» en la configuración.
+
 ### Corregido
 
 - **Arranque instantáneo con historial completo:** El dispositivo ya no reconstruye el índice de días escaneando todo el historial en cada arranque; ahora lo carga de un fichero guardado, haciendo el inicio prácticamente inmediato incluso con años de datos almacenados.

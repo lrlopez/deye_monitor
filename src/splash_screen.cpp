@@ -18,7 +18,7 @@ static constexpr int N_VISIBLE = sizeof(VISIBLE_STEPS)/sizeof(VISIBLE_STEPS[0]);
 static const char* STEP_NAMES[] = {
     "Sistema de archivos",
     "Almacenamiento",
-    "Cache PSRAM",
+    "Cach\xC3\xA9 PSRAM",
     "Hora NTP",
     "Red WiFi",
     "Red WiFi",      // WIFI_OK  → alias

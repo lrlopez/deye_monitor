@@ -1,5 +1,6 @@
 #pragma once
 #include <lvgl.h>
+#include "symbols.h"
 
 // ── Resolución y fuentes (definir en config.h o platformio.ini) ───────────
 // #define SCREEN_WIDTH    480

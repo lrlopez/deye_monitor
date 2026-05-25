@@ -193,7 +193,7 @@ void dashboard_init(lv_obj_t* parent)
 
     // ── SOLAR ─────────────────────────────────────────────────────────────
     {
-        lv_obj_t* c = make_card(parent, x0, y0, LV_SYMBOL_CHARGE " SOLAR", C_SOLAR);
+        lv_obj_t* c = make_card(parent, x0, y0, LV_SYMBOL_SUN " SOLAR", C_SOLAR);
 
         lbl_pv1 = make_info(c, INFO_Y1, "PV1: --- W");
         lbl_pv2 = make_info(c, INFO_Y2, "PV2: --- W");
@@ -211,7 +211,7 @@ void dashboard_init(lv_obj_t* parent)
 
     // ── RED ───────────────────────────────────────────────────────────────
     {
-        lv_obj_t* c = make_card(parent, x1, y0, LV_SYMBOL_WIFI " RED", C_RUN);
+        lv_obj_t* c = make_card(parent, x1, y0, LV_SYMBOL_PLUG " RED", C_RUN);
 
         lbl_grid_status = make_info(c, INFO_Y1, "--");
 
@@ -229,7 +229,7 @@ void dashboard_init(lv_obj_t* parent)
     // ── BATERÍA ───────────────────────────────────────────────────────────
     {
         lv_obj_t* c = make_card(parent, x0, y1,
-                                 LV_SYMBOL_BATTERY_FULL " BATERIA", C_BATT_OK);
+                                 LV_SYMBOL_BATTERY_FULL " BATER\xC3\xADA", C_BATT_OK);
 
         lbl_batt_status = make_info(c, INFO_Y1, "--");
 
@@ -390,7 +390,7 @@ void dashboard_update(const EnergyData& d)
         lv_label_set_text_fmt(lbl_selfcon, "Autoconsumo %d%%", pct);
         lv_obj_set_style_text_color(lbl_selfcon, col, 0);
     } else {
-        lv_label_set_text(lbl_selfcon, "Sin produccion");
+        lv_label_set_text(lbl_selfcon, "Sin producci\xC3\xB3n");
         lv_obj_set_style_text_color(lbl_selfcon, C_MUTED, 0);
     }
 }

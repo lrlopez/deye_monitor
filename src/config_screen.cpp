@@ -514,7 +514,7 @@ void config_screen_init(lv_obj_t* parent) {
     lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(title, &FONT_NORMAL, 0);
     lv_obj_set_style_text_color(title, C_MUTED, 0);
-    lv_label_set_text(title, LV_SYMBOL_SETTINGS "  Configuracion");
+    lv_label_set_text(title, LV_SYMBOL_SETTINGS "  Configuraci\xC3\xB3n");
 
     // ── Sección WiFi ──────────────────────────────────────────────────────
     lv_obj_t* sec_wifi = make_section(parent, LV_SYMBOL_WIFI "RED WiFi", SEC_WIFI_Y, SEC_WIFI_H);
@@ -599,7 +599,7 @@ void config_screen_init(lv_obj_t* parent) {
 
     // ── Sección Gráfica ───────────────────────────────────────────────────────
     // h=100: fila checkbox(16+10) + fila label/valor(20) + fila slider(24) + padding
-    lv_obj_t* sec_chart = make_section(parent, LV_SYMBOL_CHARGE " GRAFICA", SEC_CHART_Y, SEC_CHART_H);
+    lv_obj_t* sec_chart = make_section(parent, LV_SYMBOL_CHART " GR\xC3\x81FICA", SEC_CHART_Y, SEC_CHART_H);
 
     // Fila 1: checkbox autoescalado  (y=16)
     cb_autoscale = lv_checkbox_create(sec_chart);
@@ -839,7 +839,7 @@ void config_screen_init(lv_obj_t* parent) {
     const int R4 = R3B + SS(16) + SY(10);
     s_cb_bl_night = lv_checkbox_create(sec_bl);
     lv_obj_set_pos(s_cb_bl_night, 0, R4);
-    lv_checkbox_set_text(s_cb_bl_night, "Horario nocturno");
+    lv_checkbox_set_text(s_cb_bl_night, LV_SYMBOL_MOON " Horario nocturno");
     lv_obj_set_style_text_font(s_cb_bl_night, &FONT_SMALL, 0);
     lv_obj_set_style_text_color(s_cb_bl_night, C_WHITE, 0);
     if (blcfg.night_enabled) lv_obj_add_state(s_cb_bl_night, LV_STATE_CHECKED);
@@ -970,7 +970,7 @@ void config_screen_tick() {
         lv_label_set_text(lbl_rssi, buf);
         lv_obj_set_style_text_color(lbl_rssi, rssi_color(rssi), 0);
     } else {
-        lv_label_set_text(lbl_ip,   "Sin conexion");
+        lv_label_set_text(lbl_ip,   "Sin conexi\xC3\xB3n");
         lv_label_set_text(lbl_rssi, "--");
         lv_obj_set_style_text_color(lbl_rssi, C_ERR, 0);
     }

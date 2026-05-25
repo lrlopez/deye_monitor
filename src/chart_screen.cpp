@@ -390,7 +390,7 @@ void chart_screen_init(lv_obj_t* parent) {
     // Botón calendario
     lv_obj_t* btn_cal = nav_btn(parent,
         SCREEN_WIDTH-NAV_BTN_W-SX(4)-SX(34), SY(2),
-        SX(34), NAV_BTN_H, LV_SYMBOL_LIST, nullptr);
+        SX(34), NAV_BTN_H, LV_SYMBOL_CALENDAR, nullptr);
     lv_obj_add_event_cb(btn_cal, [](lv_event_t*) {
         calendar_show(
             day_epoch_from_offset(s_offset),
@@ -508,7 +508,7 @@ void chart_screen_init(lv_obj_t* parent) {
     lv_obj_set_style_text_align(s_no_data, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(s_no_data, &FONT_NORMAL, 0);
     lv_obj_set_style_text_color(s_no_data, C_MUTED, 0);
-    lv_label_set_text(s_no_data, "Sin datos para este dia");
+    lv_label_set_text(s_no_data, "Sin datos para este d\xC3\xADa");
 
     // ── Línea vertical ────────────────────────────────────────────────────
     s_vline = lv_obj_create(parent);

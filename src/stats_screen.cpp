@@ -252,7 +252,7 @@ void stats_screen_init(lv_obj_t* parent) {
     // Botón calendario — entre label y →
     lv_obj_t* btn_cal = nav_btn(parent,
         SCREEN_WIDTH - NAV_BTN_W - SX(4) - SX(34), SY(2),
-        SX(34), NAV_BTN_H, LV_SYMBOL_LIST, nullptr);
+        SX(34), NAV_BTN_H, LV_SYMBOL_CALENDAR, nullptr);
     lv_obj_add_event_cb(btn_cal, [](lv_event_t*) {
         calendar_show(
             day_epoch_from_offset(s_offset),
@@ -302,7 +302,7 @@ void stats_screen_init(lv_obj_t* parent) {
     lv_obj_set_style_border_width(sep_v, 0, 0);
 
     // Subtítulos de columna
-    const char* subs[2] = {"CONSUMO", "PRODUCCION"};
+    const char* subs[2] = {"CONSUMO", "PRODUCCI\xC3\x93N"};
     for (int c = 0; c < 2; c++) {
         lv_obj_t* s = lv_label_create(parent);
         lv_obj_set_pos(s, c*STATS_COL_W, STATS_NAV_H + SY(2));
@@ -344,7 +344,7 @@ void stats_screen_init(lv_obj_t* parent) {
 
     // ── Leyendas ──────────────────────────────────────────────────────────
     const char* cn[3] = {"Solar directo", "Descarga bat.", "Importacion"};
-    const char* pn[3] = {"Autoconsumo",   "Carga bat.",   "Exportacion"};
+    const char* pn[3] = {"Autoconsumo",   "Carga bat.",   "Exportaci\xC3\xB3n"};
     for (int i = 0; i < 3; i++) {
         make_legend_row(parent, SX(4),
                         STATS_LEGEND_Y + i*STATS_LEG_ROW_H,
@@ -363,7 +363,7 @@ void stats_screen_init(lv_obj_t* parent) {
     lv_obj_set_style_text_align(s_no_data, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(s_no_data, &FONT_NORMAL, 0);
     lv_obj_set_style_text_color(s_no_data, C_MUTED, 0);
-    lv_label_set_text(s_no_data, "Sin datos para este dia");
+    lv_label_set_text(s_no_data, "Sin datos para este d\xC3\xADa");
     lv_obj_add_flag(s_no_data, LV_OBJ_FLAG_HIDDEN);
 }
 

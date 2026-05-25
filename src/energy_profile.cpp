@@ -313,10 +313,10 @@ static void chart_draw_cb(lv_event_t* e) {
     // ── Leyenda 2 filas (positivo fila 0, negativo fila 1) ────────────────
     struct { const char* lbl; lv_color_t col; } legs[6] = {
         { "FV",            EP_CC_PV   },
-        { "Importacion",   EP_CC_IMP  },
+        { "Importaci\xC3\xB3n",   EP_CC_IMP  },
         { "Descarga bat.", EP_CC_DIS  },
         { "Consumo",       EP_CN_LOAD },
-        { "Exportacion",   EP_CN_EXP  },
+        { "Exportaci\xC3\xB3n",   EP_CN_EXP  },
         { "Carga bat.",    EP_CN_CHG  },
     };
 
