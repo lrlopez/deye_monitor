@@ -185,9 +185,8 @@ static lv_obj_t* make_slider_row(lv_obj_t* parent, int y,
 
 // ── Icono de señal WiFi según RSSI ─────────────────────────────────────────
 static const char* rssi_icon(int rssi) {
-    if (rssi >= -55) return LV_SYMBOL_WIFI;          // 3 barras
-    if (rssi >= -70) return LV_SYMBOL_WIFI;          // LVGL no tiene iconos parciales
-    return LV_SYMBOL_WIFI;                           // usamos color para diferenciar
+    if (rssi >= -75) return LV_SYMBOL_WIFI;          // buena/media (color vía rssi_color)
+    return LV_SYMBOL_WIFI_OFF;                       // débil/inutilizable
 }
 
 static lv_color_t rssi_color(int rssi) {
