@@ -22,7 +22,6 @@
 #define C_BATT  lv_color_hex(0x2ECC71)
 #define C_LOAD  lv_color_hex(0xBB6BD9)
 #define C_SOC   lv_color_hex(0x1A56DB)
-#define C_GBTN  lv_color_hex(0x21262D)
 #define C_GRID_LINE lv_color_hex(0x21262D)
 
 // ── Estado ────────────────────────────────────────────────────────────────
@@ -320,12 +319,12 @@ static lv_obj_t* nav_btn(lv_obj_t* p, int x, int y, int w, int h, const char* tx
     lv_obj_t* btn = lv_btn_create(p);
     lv_obj_set_pos(btn, x, y); lv_obj_set_size(btn, w, h);
     lv_obj_set_style_bg_color(btn, C_GBTN, 0);
-    lv_obj_set_style_radius(btn, 5, 0);
+    lv_obj_set_style_radius(btn, SS(5), 0);
     lv_obj_set_style_border_width(btn, 0, 0);
     lv_obj_set_style_shadow_width(btn, 0, 0);
     lv_obj_t* lbl = lv_label_create(btn);
     lv_label_set_text(lbl, txt);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(lbl, &FONT_NORMAL, 0);
     lv_obj_set_style_text_color(lbl, lv_color_hex(0x4A9EFF), 0);
     lv_obj_center(lbl);
     lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, nullptr);

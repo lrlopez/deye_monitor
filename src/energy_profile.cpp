@@ -447,19 +447,17 @@ static void chart_click_ep_cb(lv_event_t* e) {
 
 // ── Helpers de UI ─────────────────────────────────────────────────────────
 static lv_obj_t* make_nav_btn(lv_obj_t* parent, const char* sym) {
-    lv_obj_t* btn = lv_obj_create(parent);
+    lv_obj_t* btn = lv_btn_create(parent);
     lv_obj_set_size(btn, NAV_BTN_W, NAV_BTN_H);
-    lv_obj_set_style_bg_color(btn, C_BG, 0);
-    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(btn, C_GBTN, 0);
+    lv_obj_set_style_radius(btn, SS(5), 0);
     lv_obj_set_style_border_width(btn, 0, 0);
-    lv_obj_set_style_radius(btn, UI_RADIUS, 0);
-    lv_obj_set_style_pad_all(btn, 0, 0);
-    lv_obj_set_style_opa(btn, LV_OPA_40, LV_STATE_DISABLED);
-    lv_obj_remove_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_shadow_width(btn, 0, 0);
 
     lv_obj_t* lbl = lv_label_create(btn);
     lv_label_set_text(lbl, sym);
-    lv_obj_set_style_text_color(lbl, C_WHITE, 0);
+    lv_obj_set_style_text_font(lbl, &FONT_NORMAL, 0);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(0x4A9EFF), 0);
     lv_obj_center(lbl);
     return btn;
 }

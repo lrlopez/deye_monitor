@@ -126,6 +126,7 @@
 #define C_DOTS      lv_color_hex(0x1E2D45)
 #define C_LIST      lv_color_hex(0x1C2128)
 
+#define C_GBTN      lv_color_hex(0x21262D)   // fondo de botones de navegación
 #define C_OVERLAY   lv_color_hex(0x000000)
 #define C_HDR_BG    lv_color_hex(0x0D1117)
 #define C_BORDER    lv_color_hex(0x30363D)

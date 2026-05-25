@@ -9,7 +9,6 @@
 
 // ── Paleta ────────────────────────────────────────────────────────────────
 #define C_BAR_BG lv_color_hex(0x21262D)
-#define C_GBTN  lv_color_hex(0x21262D)
 #define C_CON_PV   lv_color_hex(0x2ECC71)
 #define C_CON_DIS  lv_color_hex(0x4A9EFF)
 #define C_CON_IMP  lv_color_hex(0xBB6BD9)
