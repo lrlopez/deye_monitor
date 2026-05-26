@@ -1377,7 +1377,9 @@ function fmtH(v){v=+v;return(v<10?'0':'')+v+'h';}
 
     // ── Pantalla ──────────────────────────────────────────────────────────
     server.sendContent("<div class='card'><h2>&#128261; Pantalla</h2>");
-    send_range("Brillo normal",   "bl_norm",  10, 100,
+    send_range("Brillo operaci\xC3\xB3n", "bl_op",   10, 100,
+               blcfg.op_pct,      "fmtPct", blcfg.op_pct,      "%");
+    send_range("Brillo diurno",   "bl_norm",   0, 100,
                blcfg.normal_pct,  "fmtPct", blcfg.normal_pct,  "%");
     send_range("Brillo reducido", "bl_red",    0, 100,
                blcfg.reduced_pct, "fmtPct", blcfg.reduced_pct, "%");
@@ -1467,7 +1469,8 @@ static void handle_admin_post() {
     // ── Pantalla ──────────────────────────────────────────────────────────
     auto clamp = [](int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; };
     BacklightConfig blcfg{};
-    blcfg.normal_pct         = (uint8_t)clamp(server.arg("bl_norm").toInt(),   10, 100);
+    blcfg.op_pct             = (uint8_t)clamp(server.arg("bl_op").toInt(),     10, 100);
+    blcfg.normal_pct         = (uint8_t)clamp(server.arg("bl_norm").toInt(),    0, 100);
     blcfg.reduced_pct        = (uint8_t)clamp(server.arg("bl_red").toInt(),     0, 100);
     blcfg.inactivity_enabled = server.hasArg("bl_inact");
     blcfg.inactivity_div10   = (uint8_t)clamp(server.arg("bl_isecs").toInt(),   1,  18);

@@ -31,8 +31,9 @@ struct ChartConfig {
 };
 
 struct BacklightConfig {
-    uint8_t  normal_pct;          // 10–100, default 90
-    uint8_t  reduced_pct;         // 0–100,  default 10
+    uint8_t  op_pct;              // 10–100, default 100 — brillo mientras se opera
+    uint8_t  normal_pct;          // 0–100,  default 70  — brillo diurno en reposo
+    uint8_t  reduced_pct;         // 0–100,  default 10  — brillo nocturno en reposo
     bool     inactivity_enabled;  // default true
     uint8_t  inactivity_div10;    // 1–18 (×10 = 10–180 s), default 6
     bool     night_enabled;       // default true

@@ -21,8 +21,9 @@ public:
     void tick();
 
     // Forzar brillo inmediato (para preview en config)
-    void previewNormal()  { _apply_immediate(_pct_to_duty(_cfg.normal_pct));  }
-    void previewReduced() { _apply_immediate(_pct_to_duty(_cfg.reduced_pct)); }
+    void previewOperating() { _apply_immediate(_pct_to_duty(_cfg.op_pct));      }
+    void previewNormal()    { _apply_immediate(_pct_to_duty(_cfg.normal_pct));  }
+    void previewReduced()   { _apply_immediate(_pct_to_duty(_cfg.reduced_pct)); }
 
 private:
     BacklightManager() = default;

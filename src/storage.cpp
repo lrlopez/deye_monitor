@@ -131,6 +131,7 @@ TelegramConfig StorageManager::loadTelegramConfig() {
 
 void StorageManager::saveBacklightConfig(const BacklightConfig& cfg) {
     Preferences p; p.begin(NS_CFG, false);
+    p.putUChar("bl_op",    cfg.op_pct);
     p.putUChar("bl_norm",   cfg.normal_pct);
     p.putUChar("bl_red",    cfg.reduced_pct);
     p.putBool ("bl_inact",  cfg.inactivity_enabled);
@@ -144,7 +145,8 @@ void StorageManager::saveBacklightConfig(const BacklightConfig& cfg) {
 BacklightConfig StorageManager::loadBacklightConfig() {
     BacklightConfig cfg{};
     Preferences p; p.begin(NS_CFG, true);
-    cfg.normal_pct         = p.getUChar("bl_norm",   90);
+    cfg.op_pct             = p.getUChar("bl_op",    100);
+    cfg.normal_pct         = p.getUChar("bl_norm",   70);
     cfg.reduced_pct        = p.getUChar("bl_red",    10);
     cfg.inactivity_enabled = p.getBool ("bl_inact",  true);
     cfg.inactivity_div10   = p.getUChar("bl_isecs",  6);

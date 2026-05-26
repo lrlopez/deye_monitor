@@ -56,6 +56,7 @@ Compatible con **ESP32-S3** (pantalla 480×272 px) y **ESP32-P4** (pantalla Guit
 - **Perfil de energía mensual:** gráfica de barras apiladas con balance diario FV/Red/Batería, navegable mes a mes; popup con valores exactos en kWh al tocar un día; tap en el título para volver al mes actual
 - Pantalla de configuración con scroll, teclado virtual y botón «Reiniciar sin guardar»
 - Calendario mensual para selección directa de fecha
+- **Tres niveles de brillo:** operación (mientras se toca), diurno en reposo y nocturno en reposo; las alertas en pantalla reactivan el brillo de operación automáticamente
 - Modo nocturno con **slider de rango** para definir el intervalo horario visualmente
 - **Fuentes personalizadas** con tildes, eñes y caracteres especiales del español, compiladas en el firmware
 - Pantalla de inicio (splash) con progreso de inicialización
@@ -292,7 +293,7 @@ Formulario scrollable con teclado virtual:
 | RED WiFi | SSID (con escáner de redes) + contraseña |
 | INVERSOR | IP del datalogger + número de serie |
 | GRÁFICA | Autoescalado / máximo kW |
-| PANTALLA | Brillo normal/reducido, inactividad, horario nocturno con **slider de rango** visual |
+| PANTALLA | Brillo operación/diurno/nocturno, inactividad, horario nocturno con **slider de rango** visual |
 | TELEGRAM | Bot token, chat ID, umbral de aviso (amarillo) y crítico (rojo) de batería, tipos de alerta |
 | ESTADO RED | IP del ESP32, señal WiFi, nombre mDNS |
 | ACCESO WEB | Contraseña para el panel de administración web y OTA |
@@ -348,7 +349,7 @@ Permite configurar todos los parámetros del sistema desde el navegador, sin nec
 | **Inversor** | IP del datalogger, número de serie |
 | **Gráfica** | Autoescalado, máximo kW |
 | **Telegram** | Token del bot, chat ID, umbral de aviso (amarillo) y crítico (rojo) de batería, tipos de alerta |
-| **Pantalla** | Brillo normal y reducido, tiempo de inactividad, horario nocturno |
+| **Pantalla** | Brillo operación, diurno y nocturno, tiempo de inactividad, horario nocturno |
 
 El panel incluye un botón **Guardar** que aplica todos los cambios y redirige de vuelta al panel, y un botón **Reiniciar** para aplicar cambios que requieren reinicio (como la IP del datalogger o el nombre mDNS).
 
@@ -457,7 +458,7 @@ La historia horaria completa reside en PSRAM, por lo que **la generación de gr�
 | `cfg` | `ssid`, `pass`, `lip`, `lserial` | WiFi e inversor |
 | `cfg` | `mdns_host` | Nombre mDNS (default: `inversor`) |
 | `cfg` | `ch_auto`, `ch_kw` | Configuración de la gráfica |
-| `cfg` | `bl_norm`, `bl_red`, `bl_inact`, `bl_isecs`, `bl_night`, `bl_nstart`, `bl_nend` | Brillo y horario nocturno |
+| `cfg` | `bl_op`, `bl_norm`, `bl_red`, `bl_inact`, `bl_isecs`, `bl_night`, `bl_nstart`, `bl_nend` | Brillo (operación/diurno/nocturno) e inactividad |
 | `cfg` | `tg_token`, `tg_chatid`, `tg_batt`, `tg_bwarn`, `tg_solar`, `tg_grid`, `tg_logger` | Telegram |
 | `cfg` | `web_pass` | Contraseña del panel de administración web |
 | `cfg` | `session` | Epoch del último registro (recuperación tras corte) |

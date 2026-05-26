@@ -1,6 +1,7 @@
 #include "screen_banner.h"
 #include "ui_constants.h"
 #include "config.h"
+#include "backlight.h"
 #include <freertos/queue.h>
 
 struct BannerMsg { AlertType type; int32_t value; };
@@ -22,6 +23,7 @@ static void banner_close_cb(lv_timer_t* /*t*/) {
 }
 
 static void show_banner(const char* text, lv_color_t bg) {
+    Backlight.onTouch();   // activa brillo de operación mientras dure la alerta
     if (s_banner_obj) { lv_obj_delete(s_banner_obj); s_banner_obj = nullptr; }
 
     lv_obj_t* b = lv_obj_create(lv_layer_top());

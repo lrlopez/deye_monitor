@@ -6,9 +6,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Unreleased]
 
+---
+
+## [v3.2.0] - 2026-05-26
+
+### Añadido
+
+- **Brillo de operación:** nuevo nivel de brillo independiente para cuando se está usando la pantalla táctil. Cuando pasa el período de inactividad, el brillo baja al nivel diurno o nocturno según el horario. Configurable desde la pantalla táctil y el panel web `/admin`.
+- **Activación de brillo al recibir una alerta:** cuando aparece un banner de alerta en pantalla, el brillo sube automáticamente al nivel de operación como si se hubiera tocado la pantalla, garantizando que la notificación sea visible aunque el dispositivo estuviera en reposo.
+
 ### Corregido
 
-- **Doble tap para volver al dashboard:** Ahora funciona en todos los casos.
+- **Doble tap para volver al dashboard:** ahora funciona en todos los casos (se detecta en el flanco de subida del segundo press, con ventana de 600 ms y tileview guardado directamente en lugar de buscarlo por índice de hijo).
 - **Fuentes:** La fuente más grande no se mostraba correctamente en todos los dispositivos.
 
 ---

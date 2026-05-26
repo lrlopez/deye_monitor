@@ -71,13 +71,13 @@ void BacklightManager::begin(uint8_t pin) {
         ledcAttachPin(pin, BL_CHANNEL);
     #endif
 
-    uint8_t initial = _pct_to_duty(_cfg.normal_pct);
+    uint8_t initial = _pct_to_duty(_cfg.op_pct);
     _apply_immediate(initial);
     _last_touch = millis();
 
-    DBGSERIAL.printf("[BL] Iniciado — normal:%d%% reducido:%d%% "
+    DBGSERIAL.printf("[BL] Iniciado — op:%d%% diurno:%d%% nocturno:%d%% "
                   "inact:%ds noche:%02dh-%02dh\n",
-                  _cfg.normal_pct, _cfg.reduced_pct,
+                  _cfg.op_pct, _cfg.normal_pct, _cfg.reduced_pct,
                   _cfg.inactivity_div10 * 10,
                   _cfg.night_start_h, _cfg.night_end_h);
 }
@@ -99,10 +99,16 @@ void BacklightManager::tick() {
     if (now - _last_tick < 16) return;
     _last_tick = now;
 
-    bool dim = false;
-    if (_cfg.night_enabled && _in_night_schedule())              dim = true;
-    if (_cfg.inactivity_enabled && _inactivity_exceeded())       dim = true;
+    bool inactive = _cfg.inactivity_enabled && _inactivity_exceeded();
+    bool is_night = _cfg.night_enabled && _in_night_schedule();
 
-    uint8_t target = _pct_to_duty(dim ? _cfg.reduced_pct : _cfg.normal_pct);
+    uint8_t target;
+    if (!inactive) {
+        target = _pct_to_duty(_cfg.op_pct);       // operando → brillo de operación
+    } else if (is_night) {
+        target = _pct_to_duty(_cfg.reduced_pct);  // reposo nocturno
+    } else {
+        target = _pct_to_duty(_cfg.normal_pct);   // reposo diurno
+    }
     _apply_smooth(target);
 }

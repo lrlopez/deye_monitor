@@ -32,6 +32,8 @@ static lv_obj_t* s_cb_tg_solar   = nullptr;
 static lv_obj_t* s_cb_tg_grid    = nullptr;
 static lv_obj_t* s_cb_tg_logger  = nullptr;
 
+static lv_obj_t* s_slider_bl_op      = nullptr;
+static lv_obj_t* s_lbl_bl_op         = nullptr;
 static lv_obj_t* s_slider_bl_norm    = nullptr;
 static lv_obj_t* s_lbl_bl_norm       = nullptr;
 static lv_obj_t* s_slider_bl_red     = nullptr;
@@ -348,12 +350,7 @@ static void ta_event_cb(lv_event_t* e) {
         lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
 }
 
-static void bl_norm_cb(lv_event_t* e) {
-    int v = lv_slider_get_value((lv_obj_t*)lv_event_get_target(e));
-    char buf[8]; snprintf(buf, sizeof(buf), "%d%%", v);
-    lv_label_set_text((lv_obj_t*)lv_event_get_user_data(e), buf);
-}
-static void bl_red_cb(lv_event_t* e) {
+static void bl_pct_cb(lv_event_t* e) {
     int v = lv_slider_get_value((lv_obj_t*)lv_event_get_target(e));
     char buf[8]; snprintf(buf, sizeof(buf), "%d%%", v);
     lv_label_set_text((lv_obj_t*)lv_event_get_user_data(e), buf);
@@ -443,6 +440,7 @@ static void save_btn_cb(lv_event_t* /*e*/) {
     tgcfg.notify_logger  = lv_obj_has_state(s_cb_tg_logger, LV_STATE_CHECKED);
 
     BacklightConfig blcfg{};
+    blcfg.op_pct             = (uint8_t)lv_slider_get_value(s_slider_bl_op);
     blcfg.normal_pct         = (uint8_t)lv_slider_get_value(s_slider_bl_norm);
     blcfg.reduced_pct        = (uint8_t)lv_slider_get_value(s_slider_bl_red);
     blcfg.inactivity_enabled = lv_obj_has_state(s_cb_bl_inact, LV_STATE_CHECKED);
@@ -803,10 +801,9 @@ void config_screen_init(lv_obj_t* parent) {
     // ── Sección PANTALLA ──────────────────────────────────────────────────
     BacklightConfig blcfg = Storage.loadBacklightConfig();
 
-    // Altura: pad×2(20) + título(14) + 5 filas×(SS16+6) + 4 checkboxes(22×2)
-    // = 20 + 14 + 5×22 + 2×22 = 20+14+110+44 = 188 → redondeamos a 190
+    // Altura: igual que antes + 1 fila extra (SS16 + 10) para brillo operación
     const int SEC_BL_Y    = SEC_TG_Y + SEC_TG_H + SY(4);
-    const int SEC_BL_H    = SY(202);
+    const int SEC_BL_H    = SY(228);
     const int SEC_ADMIN_Y = SEC_BL_Y + SEC_BL_H + SY(4);
     const int SEC_ADMIN_H = CFG_FIELD_H + CFG_SEC_PAD*2 + SY(50);
     const int BTN_Y       = SEC_ADMIN_Y + SEC_ADMIN_H + SY(8);
@@ -814,20 +811,26 @@ void config_screen_init(lv_obj_t* parent) {
     lv_obj_t* sec_bl = make_section(parent,
                         LV_SYMBOL_EYE_OPEN " PANTALLA", SEC_BL_Y, SEC_BL_H);
 
-    // Fila 1: Brillo normal
+    // Fila 1: Brillo de operación (mientras se toca la pantalla)
     const int R1 = SY(18);
-    s_slider_bl_norm = make_slider_row(sec_bl, R1,
-        "Brillo normal:", 10, 100, blcfg.normal_pct,
-        &s_lbl_bl_norm, "%", bl_norm_cb);
+    s_slider_bl_op = make_slider_row(sec_bl, R1,
+        "Brillo operaci\xC3\xB3n:", 10, 100, blcfg.op_pct,
+        &s_lbl_bl_op, "%", bl_pct_cb);
 
-    // Fila 2: Brillo reducido
+    // Fila 2: Brillo diurno en reposo
     const int R2 = R1 + SS(16) + SY(10);
-    s_slider_bl_red = make_slider_row(sec_bl, R2,
-        "Brillo reducido:", 0, 100, blcfg.reduced_pct,
-        &s_lbl_bl_red, "%", bl_red_cb);
+    s_slider_bl_norm = make_slider_row(sec_bl, R2,
+        "Brillo diurno:", 0, 100, blcfg.normal_pct,
+        &s_lbl_bl_norm, "%", bl_pct_cb);
 
-    // Fila 3: Checkbox inactividad + slider segundos
-    const int R3 = R2 + SS(16) + SY(10);
+    // Fila 3: Brillo reducido (nocturno en reposo)
+    const int R3_RED = R2 + SS(16) + SY(10);
+    s_slider_bl_red = make_slider_row(sec_bl, R3_RED,
+        "Brillo reducido:", 0, 100, blcfg.reduced_pct,
+        &s_lbl_bl_red, "%", bl_pct_cb);
+
+    // Fila 4: Checkbox inactividad + slider segundos
+    const int R3 = R3_RED + SS(16) + SY(10);
     s_cb_bl_inact = lv_checkbox_create(sec_bl);
     lv_obj_set_pos(s_cb_bl_inact, 0, R3);
     lv_checkbox_set_text(s_cb_bl_inact, "Reducir con inactividad");
